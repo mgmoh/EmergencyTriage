@@ -19,7 +19,7 @@ const MOCK_PATIENTS = {
       },
       {
         code: { text: "Chronic headaches", coding: [{ code: "headache" }] },
-        severity: "moderate"
+        severity: "severe"
       }
     ]
   },
