@@ -26,7 +26,7 @@ export function MedicalHistory({ fhirPatient, currentComplaint }: MedicalHistory
   }
 
   const conditions = fhirPatient.conditions;
-  
+
   // Separate conditions into high risk and others
   const highRiskConditions = conditions.filter((condition: any) => {
     const conditionText = condition?.code?.text?.toLowerCase() || '';
@@ -72,6 +72,9 @@ export function MedicalHistory({ fhirPatient, currentComplaint }: MedicalHistory
               {highRiskConditions.map((condition: any, index: number) => (
                 <Badge key={index} variant="destructive">
                   {condition.code?.text}
+                  {condition.severity?.toLowerCase() === 'severe' && (
+                    <span className="ml-1 text-xs">(Severe)</span>
+                  )}
                 </Badge>
               ))}
             </div>
@@ -85,6 +88,9 @@ export function MedicalHistory({ fhirPatient, currentComplaint }: MedicalHistory
               {otherConditions.map((condition: any, index: number) => (
                 <Badge key={index} variant="outline">
                   {condition.code?.text}
+                  {condition.severity?.toLowerCase() === 'severe' && (
+                    <span className="ml-1 text-xs">(Severe)</span>
+                  )}
                 </Badge>
               ))}
             </div>

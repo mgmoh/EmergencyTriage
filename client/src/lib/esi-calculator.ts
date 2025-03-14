@@ -35,21 +35,52 @@ export function calculateESILevel(
   vitals?: Partial<InsertVitals>,
   fhirPatient?: any
 ): number {
+  const complaint = chiefComplaint.toLowerCase();
+  console.log('Calculating ESI level for complaint:', complaint);
+  console.log('Patient history:', fhirPatient?.conditions);
+
   // Check medical history for high-risk conditions
   const hasHighRiskHistory = checkHighRiskHistory(fhirPatient);
+  console.log('Has high-risk history:', hasHighRiskHistory);
 
   // Level 1: Immediate life-saving intervention
   if (isLevel1Condition(chiefComplaint, vitals)) {
+    console.log('Level 1: Immediate life-saving intervention needed');
     return 1;
   }
 
+  // Check if the complaint matches any severe conditions in history
+  if (fhirPatient?.conditions) {
+    const relatedConditions = fhirPatient.conditions.filter((condition: any) => {
+      const conditionText = condition?.code?.text?.toLowerCase() || '';
+      const isRelated = complaint.includes(conditionText) || conditionText.includes(complaint);
+      if (isRelated) {
+        console.log('Found related condition:', condition);
+      }
+      return isRelated;
+    });
+
+    // If there's a matching condition marked as severe, escalate to level 2
+    const hasSevereRelatedCondition = relatedConditions.some(
+      (condition: any) => condition.severity?.toLowerCase() === 'severe'
+    );
+
+    if (hasSevereRelatedCondition) {
+      console.log('Level 2: Severe related condition in history');
+      return 2;
+    }
+  }
+
   // Level 2: High risk or severe pain/distress
-  if (isLevel2Condition(chiefComplaint, vitals, hasHighRiskHistory, fhirPatient)) {
+  if (isLevel2Condition(chiefComplaint, vitals, hasHighRiskHistory)) {
+    console.log('Level 2: High risk or severe pain/distress');
     return 2;
   }
 
   // Level 3-5: Based on resource needs and medical history
-  return calculateResourceBasedLevel(chiefComplaint, hasHighRiskHistory);
+  const finalLevel = calculateResourceBasedLevel(chiefComplaint, hasHighRiskHistory);
+  console.log('Final ESI Level:', finalLevel);
+  return finalLevel;
 }
 
 function checkHighRiskHistory(fhirPatient?: any): boolean {
@@ -66,15 +97,24 @@ function checkHighRiskHistory(fhirPatient?: any): boolean {
 
   // Check for severe conditions
   const hasSevereCondition = conditions.some(c => c.severity === 'severe');
-  if (hasSevereCondition) return true;
+  if (hasSevereCondition) {
+    console.log('Found severe condition in history');
+    return true;
+  }
 
   // Check for chronic conditions that match our high-risk list
-  return conditions.some(condition => 
+  const hasHighRiskCondition = conditions.some(condition => 
     HIGH_RISK_CONDITIONS.some(risk => 
       condition.text.includes(risk.toLowerCase()) || 
       condition.code.includes(risk.toLowerCase())
     )
   );
+
+  if (hasHighRiskCondition) {
+    console.log('Found high-risk condition in history');
+  }
+
+  return hasHighRiskCondition;
 }
 
 function isLevel1Condition(
@@ -116,23 +156,8 @@ function isLevel2Condition(
   chiefComplaint: string,
   vitals?: Partial<InsertVitals>,
   hasHighRiskHistory: boolean = false,
-  fhirPatient?: any
 ): boolean {
   const complaint = chiefComplaint.toLowerCase();
-
-  // Check if the complaint is directly related to any historical conditions
-  const relatedConditions = fhirPatient?.conditions?.filter((condition: any) => {
-    const conditionText = condition?.code?.text?.toLowerCase() || '';
-    return complaint.includes(conditionText) || conditionText.includes(complaint);
-  }) || [];
-
-  // If there's a severe related condition, escalate to level 2
-  const hasSevereRelatedCondition = relatedConditions.some(
-    (condition: any) => condition.severity?.toLowerCase() === 'severe'
-  );
-  if (hasSevereRelatedCondition) {
-    return true;
-  }
 
   // High-risk situations
   const level2Conditions = [
@@ -181,6 +206,7 @@ function calculateResourceBasedLevel(
       complaint.includes("infection") || 
       complaint.includes("pain")) {
     resourceCount++;
+    console.log('Added resource for lab work');
   }
 
   // Imaging likely needed
@@ -188,6 +214,7 @@ function calculateResourceBasedLevel(
       complaint.includes("fall") || 
       complaint.includes("pain")) {
     resourceCount++;
+    console.log('Added resource for imaging');
   }
 
   // IV/Medication likely needed
@@ -195,17 +222,22 @@ function calculateResourceBasedLevel(
       complaint.includes("vomiting") || 
       complaint.includes("severe pain")) {
     resourceCount++;
+    console.log('Added resource for IV/Medication');
   }
 
   // Specialist consultation likely needed
   if (RESOURCE_INTENSIVE_COMPLAINTS.some(term => complaint.includes(term))) {
     resourceCount += 2;
+    console.log('Added resources for specialist consultation');
   }
 
   // High-risk history increases resource needs
   if (hasHighRiskHistory) {
     resourceCount++;
+    console.log('Added resource for high-risk history');
   }
+
+  console.log('Total resource count:', resourceCount);
 
   // Assign level based on resource count
   if (resourceCount > 2) return 3;
