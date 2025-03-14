@@ -120,7 +120,9 @@ export function TriageForm() {
                     className="shrink-0"
                     onClick={() => {
                       // Create a new FHIR patient record if none exists
-                      if (!fhirId && field.value) {
+                      if (field.value) {
+                        // Reset previous search results
+                        setFhirId(undefined);
                         createFHIRPatient.mutate({
                           resourceType: "Patient",
                           name: [{
@@ -142,6 +144,18 @@ export function TriageForm() {
                     <Search className="h-4 w-4 mr-2" />
                     Search FHIR
                   </Button>
+                  {fhirId && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setFhirId(undefined);
+                        setSuggestedPriority(null);
+                      }}
+                    >
+                      Clear Search
+                    </Button>
+                  )}
                 </div>
               </FormControl>
               <p className="text-sm text-muted-foreground mt-1">
