@@ -1,6 +1,10 @@
 import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { eq, asc, desc } from "drizzle-orm";
+
+// Export Drizzle operators for use in storage
+export { eq, asc, desc };
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),

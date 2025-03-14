@@ -1,121 +1,124 @@
 import { User, Patient, Vitals, InsertUser, InsertPatient, InsertVitals } from "@shared/schema";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "@shared/schema";
+import connectPg from "connect-pg-simple";
+import { eq, asc, desc } from "@shared/schema";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
+
+const client = new pg.Client({
+  connectionString: process.env.DATABASE_URL,
+});
+
+client.connect();
+const db = drizzle(client, { schema });
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
+
   // Patient operations
   createPatient(patient: InsertPatient): Promise<Patient>;
   getPatient(id: number): Promise<Patient | undefined>;
   updatePatientStatus(id: number, status: string): Promise<Patient>;
   updatePatientPriority(id: number, priority: number): Promise<Patient>;
   getPatientQueue(): Promise<Patient[]>;
-  
+
   // Vitals operations
   createVitals(vitals: InsertVitals): Promise<Vitals>;
   getPatientVitals(patientId: number): Promise<Vitals[]>;
-  
-  sessionStore: session.SessionStore;
+
+  sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private patients: Map<number, Patient>;
-  private vitals: Map<number, Vitals>;
-  sessionStore: session.SessionStore;
-  private currentId: number;
-  private currentPatientId: number;
-  private currentVitalsId: number;
+export class DatabaseStorage implements IStorage {
+  sessionStore: session.Store;
 
   constructor() {
-    this.users = new Map();
-    this.patients = new Map();
-    this.vitals = new Map();
-    this.currentId = 1;
-    this.currentPatientId = 1;
-    this.currentVitalsId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
+    this.sessionStore = new PostgresSessionStore({
+      pool: client,
+      createTableIfMissing: true,
     });
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const users = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    return users[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const users = await db.select().from(schema.users).where(eq(schema.users.username, username)).limit(1);
+    return users[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId++;
-    const user: User = { ...insertUser, id, isStaff: false };
-    this.users.set(id, user);
+    const [user] = await db.insert(schema.users).values(insertUser).returning();
     return user;
   }
 
   async createPatient(insertPatient: InsertPatient): Promise<Patient> {
-    const id = this.currentPatientId++;
-    const patient: Patient = {
+    const [patient] = await db.insert(schema.patients).values({
       ...insertPatient,
-      id,
-      fhirId: null,
-      priority: insertPatient.priority || 3, // Use provided priority or default to 3
+      priority: insertPatient.priority || 3,
       status: "waiting",
       arrivalTime: new Date(),
-    };
-    this.patients.set(id, patient);
+    }).returning();
     return patient;
   }
 
   async getPatient(id: number): Promise<Patient | undefined> {
-    return this.patients.get(id);
+    const patients = await db.select().from(schema.patients).where(eq(schema.patients.id, id)).limit(1);
+    return patients[0];
   }
 
   async updatePatientStatus(id: number, status: string): Promise<Patient> {
-    const patient = this.patients.get(id);
+    const [patient] = await db
+      .update(schema.patients)
+      .set({ status })
+      .where(eq(schema.patients.id, id))
+      .returning();
+
     if (!patient) throw new Error("Patient not found");
-    const updated = { ...patient, status };
-    this.patients.set(id, updated);
-    return updated;
+    return patient;
   }
 
   async updatePatientPriority(id: number, priority: number): Promise<Patient> {
-    const patient = this.patients.get(id);
+    const [patient] = await db
+      .update(schema.patients)
+      .set({ priority })
+      .where(eq(schema.patients.id, id))
+      .returning();
+
     if (!patient) throw new Error("Patient not found");
-    const updated = { ...patient, priority };
-    this.patients.set(id, updated);
-    return updated;
+    return patient;
   }
 
   async getPatientQueue(): Promise<Patient[]> {
-    return Array.from(this.patients.values())
-      .sort((a, b) => a.priority - b.priority || a.arrivalTime.getTime() - b.arrivalTime.getTime());
+    return db
+      .select()
+      .from(schema.patients)
+      .orderBy(asc(schema.patients.priority))
+      .orderBy(asc(schema.patients.arrivalTime));
   }
 
   async createVitals(insertVitals: InsertVitals): Promise<Vitals> {
-    const id = this.currentVitalsId++;
-    const vitals: Vitals = {
+    const [vitals] = await db.insert(schema.vitals).values({
       ...insertVitals,
-      id,
       timestamp: new Date(),
-    };
-    this.vitals.set(id, vitals);
+    }).returning();
     return vitals;
   }
 
   async getPatientVitals(patientId: number): Promise<Vitals[]> {
-    return Array.from(this.vitals.values())
-      .filter(v => v.patientId === patientId)
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return db
+      .select()
+      .from(schema.vitals)
+      .where(eq(schema.vitals.patientId, patientId))
+      .orderBy(desc(schema.vitals.timestamp));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
