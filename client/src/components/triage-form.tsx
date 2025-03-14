@@ -9,10 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { calculateESILevel } from "@/lib/esi-calculator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useState } from "react";
+import { AlertCircle } from "lucide-react";
 
 export function TriageForm() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [suggestedPriority, setSuggestedPriority] = useState<number | null>(null);
 
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
@@ -24,10 +29,25 @@ export function TriageForm() {
     },
   });
 
+  // Watch chief complaint to update ESI level
+  const chiefComplaint = form.watch("chiefComplaint");
+
+  // Update suggested priority when chief complaint changes
+  const updateSuggestedPriority = () => {
+    if (chiefComplaint) {
+      const esiLevel = calculateESILevel(chiefComplaint);
+      setSuggestedPriority(esiLevel);
+    }
+  };
+
   const createPatient = useMutation({
     mutationFn: async (data: any) => {
-      // The schema will handle date conversion, so we can send the data directly
-      const res = await apiRequest("POST", "/api/patients", data);
+      // Add calculated ESI level as initial priority
+      const patientData = {
+        ...data,
+        priority: suggestedPriority || 3, // Default to 3 if no suggestion
+      };
+      const res = await apiRequest("POST", "/api/patients", patientData);
       return res.json();
     },
     onSuccess: () => {
@@ -37,6 +57,7 @@ export function TriageForm() {
         description: "Patient added to queue",
       });
       form.reset();
+      setSuggestedPriority(null);
     },
     onError: (error: Error) => {
       toast({
@@ -127,12 +148,32 @@ export function TriageForm() {
                 <Textarea 
                   {...field} 
                   placeholder="Describe the main reason for visit"
+                  onChange={(e) => {
+                    field.onChange(e);
+                    // Update ESI level when complaint changes
+                    updateSuggestedPriority();
+                  }}
                 />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        {suggestedPriority && (
+          <Alert className={suggestedPriority <= 2 ? "border-red-500 bg-red-50" : undefined}>
+            <AlertCircle className={suggestedPriority <= 2 ? "text-red-500" : undefined} />
+            <AlertTitle>Suggested ESI Level: {suggestedPriority}</AlertTitle>
+            <AlertDescription>
+              Based on the chief complaint, this patient is classified as{' '}
+              {suggestedPriority === 1 ? 'Critical - Immediate life-saving intervention needed' :
+               suggestedPriority === 2 ? 'Emergent - High risk situation' :
+               suggestedPriority === 3 ? 'Urgent - Multiple resources needed' :
+               suggestedPriority === 4 ? 'Less Urgent - One resource needed' :
+               'Non-urgent - No resources needed'}
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Button 
           type="submit" 
