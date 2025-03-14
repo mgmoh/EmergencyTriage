@@ -53,7 +53,9 @@ export function calculateESILevel(
   if (fhirPatient?.conditions) {
     const relatedConditions = fhirPatient.conditions.filter((condition: any) => {
       const conditionText = condition?.code?.text?.toLowerCase() || '';
-      const isRelated = complaint.includes(conditionText) || conditionText.includes(complaint);
+      const isRelated = complaint.includes(conditionText) || 
+                       conditionText.includes(complaint) ||
+                       isSymptomRelated(complaint, conditionText);
       if (isRelated) {
         console.log('Found related condition:', condition);
       }
@@ -81,6 +83,25 @@ export function calculateESILevel(
   const finalLevel = calculateResourceBasedLevel(chiefComplaint, hasHighRiskHistory);
   console.log('Final ESI Level:', finalLevel);
   return finalLevel;
+}
+
+function isSymptomRelated(complaint: string, condition: string): boolean {
+  // Map of symptoms to related terms
+  const symptomMap = {
+    'headache': ['head', 'migraine', 'scar', 'cranial'],
+    'chest': ['heart', 'cardiac', 'thoracic'],
+    'breathing': ['breath', 'respiratory', 'asthma', 'copd'],
+    'anxiety': ['stress', 'panic', 'nervous'],
+    'trauma': ['injury', 'fracture', 'broken']
+  };
+
+  for (const [symptom, relatedTerms] of Object.entries(symptomMap)) {
+    if ((complaint.includes(symptom) || relatedTerms.some(term => complaint.includes(term))) &&
+        (condition.includes(symptom) || relatedTerms.some(term => condition.includes(term)))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function checkHighRiskHistory(fhirPatient?: any): boolean {
