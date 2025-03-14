@@ -12,8 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { calculateESILevel } from "@/lib/esi-calculator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useState } from "react";
-import { AlertCircle } from "lucide-react";
-import { useFHIRPatient } from "@/hooks/use-fhir";
+import { AlertCircle, Search } from "lucide-react";
+import { useFHIRPatient, useCreateFHIRPatient } from "@/hooks/use-fhir";
+import { MedicalHistory } from "./medical-history";
 
 export function TriageForm() {
   const { toast } = useToast();
@@ -21,6 +22,7 @@ export function TriageForm() {
   const [suggestedPriority, setSuggestedPriority] = useState<number | null>(null);
   const [fhirId, setFhirId] = useState<string | undefined>();
   const { data: fhirPatient } = useFHIRPatient(fhirId);
+  const createFHIRPatient = useCreateFHIRPatient();
 
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
@@ -110,23 +112,39 @@ export function TriageForm() {
             <FormItem>
               <FormLabel>Patient Name</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="Enter patient name" />
+                <div className="flex gap-2">
+                  <Input {...field} placeholder="Enter patient name" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => {
+                      // Create a new FHIR patient record if none exists
+                      if (!fhirId && field.value) {
+                        createFHIRPatient.mutate({
+                          resourceType: "Patient",
+                          name: [{
+                            use: "official",
+                            text: field.value
+                          }]
+                        });
+                      }
+                    }}
+                  >
+                    <Search className="h-4 w-4 mr-2" />
+                    Search FHIR
+                  </Button>
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {fhirPatient && (
-          <Alert>
-            <AlertTitle>Medical History Found</AlertTitle>
-            <AlertDescription>
-              Found existing patient record with {
-                fhirPatient.conditions?.length || 0
-              } historical conditions. This information will be considered in the ESI calculation.
-            </AlertDescription>
-          </Alert>
-        )}
+        <MedicalHistory 
+          fhirPatient={fhirPatient} 
+          currentComplaint={chiefComplaint}
+        />
 
         <FormField
           control={form.control}
