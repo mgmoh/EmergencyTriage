@@ -13,11 +13,14 @@ import { calculateESILevel } from "@/lib/esi-calculator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useState } from "react";
 import { AlertCircle } from "lucide-react";
+import { useFHIRPatient } from "@/hooks/use-fhir";
 
 export function TriageForm() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [suggestedPriority, setSuggestedPriority] = useState<number | null>(null);
+  const [fhirId, setFhirId] = useState<string | undefined>();
+  const { data: fhirPatient } = useFHIRPatient(fhirId);
 
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
@@ -35,7 +38,7 @@ export function TriageForm() {
   // Update suggested priority when chief complaint changes
   const updateSuggestedPriority = () => {
     if (chiefComplaint) {
-      const esiLevel = calculateESILevel(chiefComplaint);
+      const esiLevel = calculateESILevel(chiefComplaint, undefined, fhirPatient);
       setSuggestedPriority(esiLevel);
     }
   };
@@ -49,6 +52,7 @@ export function TriageForm() {
       const patientData = {
         ...data,
         priority: suggestedPriority,
+        fhirId: fhirId,
       };
 
       const res = await apiRequest("POST", "/api/patients", patientData);
@@ -63,6 +67,7 @@ export function TriageForm() {
       });
       form.reset();
       setSuggestedPriority(null);
+      setFhirId(undefined);
     },
     onError: (error: Error) => {
       toast({
@@ -111,6 +116,17 @@ export function TriageForm() {
             </FormItem>
           )}
         />
+
+        {fhirPatient && (
+          <Alert>
+            <AlertTitle>Medical History Found</AlertTitle>
+            <AlertDescription>
+              Found existing patient record with {
+                fhirPatient.conditions?.length || 0
+              } historical conditions. This information will be considered in the ESI calculation.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <FormField
           control={form.control}
@@ -180,7 +196,8 @@ export function TriageForm() {
             <AlertCircle className={suggestedPriority <= 2 ? "text-red-500" : undefined} />
             <AlertTitle>Suggested ESI Level: {suggestedPriority}</AlertTitle>
             <AlertDescription>
-              Based on the chief complaint, this patient is classified as{' '}
+              Based on the chief complaint{fhirPatient ? " and medical history" : ""}, 
+              this patient is classified as{' '}
               {suggestedPriority === 1 ? 'Critical - Immediate life-saving intervention needed' :
                suggestedPriority === 2 ? 'Emergent - High risk situation' :
                suggestedPriority === 3 ? 'Urgent - Multiple resources needed' :
