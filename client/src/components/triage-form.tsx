@@ -26,12 +26,8 @@ export function TriageForm() {
 
   const createPatient = useMutation({
     mutationFn: async (data: any) => {
-      // Convert the date string to a Date object
-      const formattedData = {
-        ...data,
-        dateOfBirth: new Date(data.dateOfBirth),
-      };
-      const res = await apiRequest("POST", "/api/patients", formattedData);
+      // The schema will handle date conversion, so we can send the data directly
+      const res = await apiRequest("POST", "/api/patients", data);
       return res.json();
     },
     onSuccess: () => {

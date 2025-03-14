@@ -38,11 +38,12 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
 });
 
-export const insertPatientSchema = createInsertSchema(patients).pick({
-  name: true,
-  dateOfBirth: true,
-  gender: true,
-  chiefComplaint: true,
+// Custom schema for patient insertion with date string handling
+export const insertPatientSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  dateOfBirth: z.string().transform((str) => new Date(str)),
+  gender: z.string().min(1, "Gender is required"),
+  chiefComplaint: z.string().min(1, "Chief complaint is required"),
 });
 
 export const insertVitalsSchema = createInsertSchema(vitals).pick({
