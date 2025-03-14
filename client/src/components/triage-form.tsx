@@ -113,7 +113,7 @@ export function TriageForm() {
               <FormLabel>Patient Name</FormLabel>
               <FormControl>
                 <div className="flex gap-2">
-                  <Input {...field} placeholder="Enter patient name" />
+                  <Input {...field} placeholder="Try 'Harry Potter' or 'Ron Weasley'" />
                   <Button
                     type="button"
                     variant="outline"
@@ -127,6 +127,14 @@ export function TriageForm() {
                             use: "official",
                             text: field.value
                           }]
+                        }, {
+                          onSuccess: (data) => {
+                            setFhirId(data.id);
+                            toast({
+                              title: "Patient Found",
+                              description: "Medical history loaded successfully.",
+                            });
+                          }
                         });
                       }
                     }}
@@ -136,6 +144,9 @@ export function TriageForm() {
                   </Button>
                 </div>
               </FormControl>
+              <p className="text-sm text-muted-foreground mt-1">
+                Demo: Try searching for "Harry Potter" or "Ron Weasley"
+              </p>
               <FormMessage />
             </FormItem>
           )}
