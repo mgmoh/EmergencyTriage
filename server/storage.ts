@@ -1,36 +1,41 @@
 import { User, Patient, Vitals, InsertUser, InsertPatient, InsertVitals } from "@shared/schema";
 import session from "express-session";
 import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
+import pkg from "pg";
+const { Pool } = pkg;
 import * as schema from "@shared/schema";
 import connectPg from "connect-pg-simple";
 import { eq, asc, desc } from "@shared/schema";
 
 const PostgresSessionStore = connectPg(session);
 
-const client = new pg.Client({
+// Create a connection pool instead of a single client
+const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 20, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
+  connectionTimeoutMillis: 2000, // How long to wait for a connection
 });
 
-client.connect();
-const db = drizzle(client, { schema });
+// Handle pool errors
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+  process.exit(-1);
+});
+
+const db = drizzle(pool, { schema });
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-
-  // Patient operations
   createPatient(patient: InsertPatient): Promise<Patient>;
   getPatient(id: number): Promise<Patient | undefined>;
   updatePatientStatus(id: number, status: string): Promise<Patient>;
   updatePatientPriority(id: number, priority: number): Promise<Patient>;
   getPatientQueue(): Promise<Patient[]>;
-
-  // Vitals operations
   createVitals(vitals: InsertVitals): Promise<Vitals>;
   getPatientVitals(patientId: number): Promise<Vitals[]>;
-
   sessionStore: session.Store;
 }
 
@@ -39,7 +44,7 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({
-      pool: client,
+      pool, // Use the pool instead of client
       createTableIfMissing: true,
     });
   }
@@ -100,8 +105,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(schema.patients)
-      .orderBy(asc(schema.patients.priority))
-      .orderBy(asc(schema.patients.arrivalTime));
+      .orderBy(asc(schema.patients.priority), asc(schema.patients.arrivalTime));
   }
 
   async createVitals(insertVitals: InsertVitals): Promise<Vitals> {
