@@ -42,11 +42,15 @@ export function TriageForm() {
 
   const createPatient = useMutation({
     mutationFn: async (data: any) => {
-      // Add calculated ESI level as initial priority
+      if (!suggestedPriority) {
+        throw new Error("Priority level not calculated");
+      }
+
       const patientData = {
         ...data,
-        priority: suggestedPriority || 3, // Default to 3 if no suggestion
+        priority: suggestedPriority,
       };
+
       const res = await apiRequest("POST", "/api/patients", patientData);
       return res.json();
     },
@@ -77,6 +81,16 @@ export function TriageForm() {
       });
       return;
     }
+
+    if (!suggestedPriority) {
+      toast({
+        title: "Error",
+        description: "Please enter a chief complaint to calculate priority",
+        variant: "destructive",
+      });
+      return;
+    }
+
     createPatient.mutate(data);
   };
 
