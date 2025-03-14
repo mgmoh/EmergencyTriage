@@ -9,18 +9,21 @@ import { eq, asc, desc } from "@shared/schema";
 
 const PostgresSessionStore = connectPg(session);
 
-// Create a connection pool instead of a single client
+// Create a connection pool with optimized settings
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
-  connectionTimeoutMillis: 2000, // How long to wait for a connection
+  idleTimeoutMillis: 30000, // How long a client is allowed to remain idle
+  connectionTimeoutMillis: 5000, // Increased timeout for connections
+  statement_timeout: 10000, // Maximum time for queries to execute
+  query_timeout: 10000, // Maximum time for queries to execute
 });
 
 // Handle pool errors
 pool.on('error', (err) => {
   console.error('Unexpected error on idle client', err);
-  process.exit(-1);
+  // Don't exit the process, just log the error
+  console.error(err.stack);
 });
 
 const db = drizzle(pool, { schema });
