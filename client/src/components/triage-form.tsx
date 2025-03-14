@@ -13,12 +13,12 @@ import { useToast } from "@/hooks/use-toast";
 export function TriageForm() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
     defaultValues: {
       name: "",
-      dateOfBirth: new Date(),
+      dateOfBirth: new Date().toISOString().split('T')[0],
       gender: "",
       chiefComplaint: "",
     },
@@ -26,7 +26,12 @@ export function TriageForm() {
 
   const createPatient = useMutation({
     mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/patients", data);
+      // Convert the date string to a Date object
+      const formattedData = {
+        ...data,
+        dateOfBirth: new Date(data.dateOfBirth),
+      };
+      const res = await apiRequest("POST", "/api/patients", formattedData);
       return res.json();
     },
     onSuccess: () => {
@@ -46,9 +51,21 @@ export function TriageForm() {
     },
   });
 
+  const onSubmit = async (data: any) => {
+    if (!data.gender) {
+      toast({
+        title: "Error",
+        description: "Please select a gender",
+        variant: "destructive",
+      });
+      return;
+    }
+    createPatient.mutate(data);
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit((data) => createPatient.mutate(data))} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <FormField
           control={form.control}
           name="name"
@@ -56,7 +73,7 @@ export function TriageForm() {
             <FormItem>
               <FormLabel>Patient Name</FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input {...field} placeholder="Enter patient name" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -70,7 +87,11 @@ export function TriageForm() {
             <FormItem>
               <FormLabel>Date of Birth</FormLabel>
               <FormControl>
-                <Input type="date" {...field} value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : field.value} />
+                <Input 
+                  type="date" 
+                  {...field}
+                  max={new Date().toISOString().split('T')[0]}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -83,7 +104,7 @@ export function TriageForm() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Gender</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select gender" />
@@ -107,15 +128,22 @@ export function TriageForm() {
             <FormItem>
               <FormLabel>Chief Complaint</FormLabel>
               <FormControl>
-                <Textarea {...field} />
+                <Textarea 
+                  {...field} 
+                  placeholder="Describe the main reason for visit"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        <Button type="submit" className="w-full">
-          Add to Queue
+        <Button 
+          type="submit" 
+          className="w-full"
+          disabled={createPatient.isPending}
+        >
+          {createPatient.isPending ? "Adding..." : "Add to Queue"}
         </Button>
       </form>
     </Form>
