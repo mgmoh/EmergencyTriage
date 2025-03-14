@@ -52,7 +52,8 @@ export function TriageForm() {
       };
 
       const res = await apiRequest("POST", "/api/patients", patientData);
-      return res.json();
+      const responseData = await res.json();
+      return responseData;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients/queue"] });

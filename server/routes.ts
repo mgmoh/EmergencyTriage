@@ -10,10 +10,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Patient routes
   app.post("/api/patients", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    
+
     try {
       const data = insertPatientSchema.parse(req.body);
-      const patient = await storage.createPatient(data);
+      // Ensure priority is between 1-5, default to 3 if not provided
+      const priority = Math.min(Math.max(data.priority || 3, 1), 5);
+
+      const patient = await storage.createPatient({
+        ...data,
+        priority, // Explicitly set the priority
+      });
       res.status(201).json(patient);
     } catch (error) {
       res.status(400).json({ message: "Invalid patient data" });

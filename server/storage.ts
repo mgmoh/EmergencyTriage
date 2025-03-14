@@ -67,7 +67,7 @@ export class MemStorage implements IStorage {
       ...insertPatient,
       id,
       fhirId: null,
-      priority: 3,
+      priority: insertPatient.priority || 3, // Use provided priority or default to 3
       status: "waiting",
       arrivalTime: new Date(),
     };
