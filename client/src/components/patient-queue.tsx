@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Patient } from "@shared/schema";
 import {
   Table,
@@ -11,6 +11,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { AlertCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 function getPriorityLabel(priority: number): string {
   switch (priority) {
@@ -53,8 +56,32 @@ function PriorityLegend() {
 }
 
 export function PatientQueue() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const { data: patients, isLoading } = useQuery<Patient[]>({
     queryKey: ["/api/patients/queue"],
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/patients/${id}/status`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients/queue"] });
+      toast({
+        title: "Success",
+        description: "Patient status updated",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   if (isLoading) {
@@ -107,9 +134,21 @@ export function PatientQueue() {
                   {format(new Date(patient.arrivalTime), "HH:mm")}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="capitalize">
-                    {patient.status}
-                  </Badge>
+                  <Select
+                    value={patient.status}
+                    onValueChange={(value) => {
+                      updateStatus.mutate({ id: patient.id, status: value });
+                    }}
+                  >
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="waiting">Waiting</SelectItem>
+                      <SelectItem value="admitted">Admitted</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </TableCell>
               </TableRow>
             ))}
