@@ -6,6 +6,11 @@ import { insertPatientSchema, insertVitalsSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
+  
+  // Health check endpoint for container monitoring
+  app.get("/api/health", (req, res) => {
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  });
 
   // Patient routes
   app.post("/api/patients", async (req, res) => {

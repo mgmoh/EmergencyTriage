@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for ER Triage application ECS deployment'
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select a VPC that allows access to the internet
+  
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select at least two subnets in your selected VPC
+  
+  ContainerPort:
+    Type: Number
+    Default: 5000
+    Description: Port on which the application listens
+  
+  ImageURI:
+    Type: String
+    Description: URI to the container image (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/ertriage-app:latest)
+  
+  SessionSecret:
+    Type: String
+    NoEcho: true
+    Description: Secret key for session encryption
+  
+  DatabaseURL:
+    Type: String
+    NoEcho: true
+    Description: PostgreSQL connection string
+
+Resources:
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: ertriage-cluster
+      CapacityProviders:
+        - FARGATE
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+  
+  # Task Definition
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: ertriage-app
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: ertriage-app
+          Image: !Ref ImageURI
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              HostPort: !Ref ContainerPort
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: PORT
+              Value: !Ref ContainerPort
+          Secrets:
+            - Name: SESSION_SECRET
+              ValueFrom: !Ref SessionSecretParameter
+            - Name: DATABASE_URL
+              ValueFrom: !Ref DatabaseURLParameter
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command: 
+              - CMD-SHELL
+              - curl -f http://localhost:5000/api/health || exit 1
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+  
+  # CloudWatch Logs Group
+  CloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/ertriage-app
+      RetentionInDays: 30
+  
+  # IAM Roles
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameters
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref SessionSecretParameter
+                  - !Ref DatabaseURLParameter
+  
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+  
+  # SSM Parameters for Secrets
+  SessionSecretParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /ertriage/SESSION_SECRET
+      Type: SecureString
+      Value: !Ref SessionSecret
+      Description: Secret key for session encryption
+  
+  DatabaseURLParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /ertriage/DATABASE_URL
+      Type: SecureString
+      Value: !Ref DatabaseURL
+      Description: PostgreSQL connection string
+  
+  # Security Groups
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for load balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ECS service
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+  
+  # Load Balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: ertriage-lb
+      Subnets: !Ref SubnetIds
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Scheme: internet-facing
+  
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: ertriage-tg
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      HealthCheckPath: /api/health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+  
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: Listener
+    Properties:
+      ServiceName: ertriage-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ECSTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: 2
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+          Subnets: !Ref SubnetIds
+      LoadBalancers:
+        - ContainerName: ertriage-app
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  LoadBalancerDNS:
+    Description: DNS name of the load balancer
+    Value: !GetAtt LoadBalancer.DNSName
+  
+  ServiceURL:
+    Description: URL of the service
+    Value: !Join ['', ['http://', !GetAtt LoadBalancer.DNSName]]
+  
+  ECSCluster:
+    Description: ECS Cluster
+    Value: !Ref ECSCluster
+  
+  ECSService:
+    Description: ECS Service
+    Value: !Ref ECSService
+  
+  TaskDefinition:
+    Description: Task Definition
+    Value: !Ref ECSTaskDefinition
