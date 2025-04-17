@@ -119,6 +119,27 @@ If you're experiencing login problems in a local deployment, try these solutions
 6. **Browser Issues**:
    Try using a private/incognito window or clearing cookies for localhost
 
+### Containerized Deployment
+
+This application supports containerized deployment using Docker. For detailed instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+**Quick Start with Docker Compose:**
+
+1. Build and start containers:
+   ```
+   docker-compose up -d
+   ```
+
+2. Access the application at http://localhost:5000
+
+**AWS Deployment:**
+
+The application includes configurations for deployment to:
+- AWS ECS (Elastic Container Service)
+- AWS EKS (Elastic Kubernetes Service)
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
+
 ## Usage Guide
 
 1. **Login or Register**: Create an account or log in
