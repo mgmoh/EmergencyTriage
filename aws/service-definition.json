@@ -1,0 +1,31 @@
+{
+  "cluster": "ertriage-cluster",
+  "serviceName": "ertriage-service",
+  "taskDefinition": "ertriage-app",
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:${AWS_REGION}:${AWS_ACCOUNT_ID}:targetgroup/ertriage-tg/xxxxxxxxxxxxxxxx",
+      "containerName": "ertriage-app",
+      "containerPort": 5000
+    }
+  ],
+  "desiredCount": 2,
+  "launchType": "FARGATE",
+  "platformVersion": "LATEST",
+  "deploymentConfiguration": {
+    "maximumPercent": 200,
+    "minimumHealthyPercent": 100
+  },
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "subnet-xxxxxxxxxxxxxxxxx",
+        "subnet-yyyyyyyyyyyyyyyyy"
+      ],
+      "securityGroups": [
+        "sg-zzzzzzzzzzzzzzzzz"
+      ],
+      "assignPublicIp": "ENABLED"
+    }
+  }
+}
