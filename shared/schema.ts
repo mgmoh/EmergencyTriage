@@ -49,6 +49,7 @@ export const insertPatientSchema = z.object({
   gender: z.string().min(1, "Gender is required"),
   chiefComplaint: z.string().min(1, "Chief complaint is required"),
   priority: z.number().min(1).max(5).optional(),
+  fhirId: z.string().optional(),
 });
 
 export const insertVitalsSchema = createInsertSchema(vitals).pick({

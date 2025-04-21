@@ -47,12 +47,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPatient(insertPatient: InsertPatient): Promise<Patient> {
+    console.log('Creating patient with data:', insertPatient); // Debug log
+    
     const [patient] = await db.insert(schema.patients).values({
       ...insertPatient,
+      fhirId: insertPatient.fhirId || null, // Ensure fhirId is stored
       priority: insertPatient.priority || 3,
       status: "waiting",
       arrivalTime: new Date(),
     }).returning();
+    
+    console.log('Created patient:', patient); // Debug log
     return patient;
   }
 
