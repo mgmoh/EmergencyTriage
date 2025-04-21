@@ -21,14 +21,21 @@ services:
   - type: web
     name: fhir-service
     env: node
-    buildCommand: cd fhir && npm install && npm run build
-    startCommand: cd fhir && npm start
+    rootDir: fhir
+    buildCommand: npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: FHIR_PORT
         value: 3001
       - key: FHIR_DATABASE_URL
-        sync: false
+        value: postgresql://emergencytriage_fhir_db_user:TxlCX8VFyRAzjHgweLrjzAtUBqIhla8x@dpg-d02rlcre5dus73c33al0-a.oregon-postgres.render.com/emergencytriage_fhir_db
+      - key: JWT_SECRET
+        value: 3a7f8b2e4d9c1f6e5b8a2d4c7f9e1b3a
+      - key: FHIR_API_KEY
+        value: fhir_9x2k5m8p4n7q1r3t6w9y2z5b8e
+      - key: CORS_ORIGIN
+        value: https://emergency-triage.onrender.com
     healthCheckPath: /fhir/metadata
     autoDeploy: true 
