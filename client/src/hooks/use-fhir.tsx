@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
-const FHIR_SERVER = "https://hapi.fhir.org/baseR4";
+const FHIR_SERVER = process.env.NEXT_PUBLIC_FHIR_SERVER || "https://hapi.fhir.org/baseR4";
 
 // Mock FHIR data for demonstration
 const MOCK_PATIENTS = {
@@ -98,17 +98,22 @@ export function useCreateFHIRPatient() {
         if (!res.ok) {
           const errorData = await res.json().catch(() => null);
           
-          // Check if it's a server error (500)
-          if (res.status === 500) {
+          // Check for specific HAPI FHIR server errors
+          if (errorData?.resourceType === "OperationOutcome" && 
+              errorData.issue?.[0]?.diagnostics?.includes("CannotCreateTransactionException")) {
             // Generate a mock patient for demo purposes when server is down
             const mockPatient = {
               id: `mock-${Date.now()}`,
+              resourceType: "Patient",
               name: patientData.name,
-              conditions: []
+              conditions: [],
+              meta: {
+                lastUpdated: new Date().toISOString()
+              }
             };
             toast({
               title: "Demo Mode",
-              description: "The FHIR server is currently unavailable. Using demo data instead.",
+              description: "The FHIR server is temporarily unavailable. Using demo data instead.",
               variant: "default",
             });
             return mockPatient;
@@ -128,13 +133,17 @@ export function useCreateFHIRPatient() {
         // Generate a mock patient for demo purposes when there's an error
         const mockPatient = {
           id: `mock-${Date.now()}`,
+          resourceType: "Patient",
           name: patientData.name,
-          conditions: []
+          conditions: [],
+          meta: {
+            lastUpdated: new Date().toISOString()
+          }
         };
         
         toast({
           title: "Demo Mode",
-          description: "The FHIR server is currently unavailable. Using demo data instead.",
+          description: "The FHIR server is temporarily unavailable. Using demo data instead.",
           variant: "default",
         });
         

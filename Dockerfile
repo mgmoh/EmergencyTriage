@@ -19,6 +19,7 @@ WORKDIR /app
 
 # Set environment to production
 ENV NODE_ENV=production
+ENV NEXT_PUBLIC_FHIR_SERVER=${NEXT_PUBLIC_FHIR_SERVER:-https://hapi.fhir.org/baseR4}
 
 # Copy package files and install production dependencies
 COPY package.json package-lock.json ./
