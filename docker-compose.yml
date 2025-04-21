@@ -2,65 +2,46 @@ version: '3.8'
 
 services:
   app:
-    build: .
-    ports:
-      - "5000:5000"
-    environment:
-      - NODE_ENV=production
-      - PORT=5000
-      - DATABASE_URL=postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@postgres:5432/${PGDATABASE:-ertriage}
-      - SESSION_SECRET=${SESSION_SECRET:-your-secret-key}
-      - NEXT_PUBLIC_FHIR_SERVER=http://hapi-fhir:8080/fhir
-    depends_on:
-      - postgres
-      - hapi-fhir
-
-  hapi-fhir:
     build:
       context: .
-      dockerfile: Dockerfile.fhir
+      dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "3000:3000"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://fhir-db:5432/${FHIR_DB_NAME:-hapi}
-      - SPRING_DATASOURCE_USERNAME=${FHIR_DB_USER:-hapi}
-      - SPRING_DATASOURCE_PASSWORD=${FHIR_DB_PASSWORD:-hapi}
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
-      - fhir-db
+      - db
+    networks:
+      - app-network
 
-  postgres:
-    image: postgres:15-alpine
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
     environment:
-      - POSTGRES_USER=${PGUSER:-postgres}
-      - POSTGRES_PASSWORD=${PGPASSWORD:-postgres}
-      - POSTGRES_DB=${PGDATABASE:-ertriage}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${PGPORT:-5432}:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    networks:
+      - app-network
 
-  fhir-db:
-    image: postgres:15-alpine
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh scripts/migrate-db.sh
     environment:
-      - POSTGRES_USER=${FHIR_DB_USER:-hapi}
-      - POSTGRES_PASSWORD=${FHIR_DB_PASSWORD:-hapi}
-      - POSTGRES_DB=${FHIR_DB_NAME:-hapi}
-    volumes:
-      - fhir_postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${FHIR_DB_USER:-hapi}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   postgres_data:
-  fhir_postgres_data:

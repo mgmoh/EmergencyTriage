@@ -1,161 +1,98 @@
-# Emergency Department Triage System
+# Emergency Triage System
 
-A comprehensive emergency room triage application designed to streamline patient management and improve healthcare workflow efficiency. This system uses the Emergency Severity Index (ESI) algorithm to prioritize patients based on acuity and resource needs.
+A modern web application for managing emergency triage processes in healthcare facilities.
 
 ## Features
 
-- **Advanced ESI Prioritization**: Automatically calculates patient priority (1-5) based on:
-  - Chief complaint analysis
-  - Vital signs assessment
-  - Medical history integration
-  - Resource utilization prediction
+- Patient registration and management
+- Triage assessment and prioritization
+- Real-time patient tracking
+- Secure data storage and access
+- Role-based access control
 
-- **Patient Management**:
-  - Priority-based patient queue
-  - Patient status tracking (waiting, in progress, completed)
-  - Medical history integration via FHIR
-  - Vital signs recording and monitoring
+## Prerequisites
 
-- **User Authentication**:
-  - Secure login/registration
-  - Staff role designation
+- Docker and Docker Compose
+- Node.js (for local development)
+- PostgreSQL (managed by Docker in production)
 
-- **Technical Highlights**:
-  - Optimized PostgreSQL connection pooling
-  - Efficient database query handling
-  - Real-time patient queue updates
-  - FHIR integration for medical records
+## Setup
 
-## Technology Stack
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd EmergencyTriage
+```
 
-- **Frontend**: React, Tailwind CSS, shadcn/ui components
-- **Backend**: Node.js, Express
-- **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: Passport.js
-- **Healthcare Integration**: FHIR API
+2. Create a `.env` file in the root directory with the following variables:
+```
+POSTGRES_USER=your_db_user
+POSTGRES_PASSWORD=your_db_password
+POSTGRES_DB=emergency_triage
+DATABASE_URL=postgresql://your_db_user:your_db_password@db:5432/emergency_triage
+NODE_ENV=production
+PORT=3000
+```
 
-## ESI Level Calculation
+3. Start the application using Docker Compose:
+```bash
+docker-compose up -d
+```
 
-The Emergency Severity Index (ESI) is a five-level triage algorithm that categorizes patients by acuity and resource needs:
+The application will be available at `http://localhost:3000`
 
-- **Level 1**: Immediate life-saving intervention required
-- **Level 2**: High-risk situation, severe pain/distress
-- **Level 3**: Multiple resources needed (labs, imaging, procedures, consultations)
-- **Level 4**: One resource needed
-- **Level 5**: No resources needed
+## Development
 
-The system analyzes chief complaints for critical keywords, checks vital signs against danger thresholds, and considers the patient's medical history to assign the appropriate ESI level.
+For local development:
 
-## Deployment Instructions
+1. Install dependencies:
+```bash
+npm install
+```
 
-### Prerequisites
+2. Start the development server:
+```bash
+npm run dev
+```
 
-- Node.js 18+ and npm
-- PostgreSQL database
+3. Run database migrations:
+```bash
+npm run migrate
+```
 
-### Steps to Deploy
+## Available Scripts
 
-1. **Clone the repository**:
-   ```
-   git clone <repository-url>
-   cd emergency-triage-system
-   ```
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm start` - Start production server
+- `npm run migrate` - Run database migrations
+- `npm test` - Run tests
+- `npm run lint` - Run linter
 
-2. **Install dependencies**:
-   ```
-   npm install
-   ```
+## Project Structure
 
-3. **Set up environment variables**:
-   Create a `.env` file with the following variables:
-   ```
-   DATABASE_URL=postgresql://username:password@hostname:port/database?sslmode=require
-   SESSION_SECRET=your_session_secret
-   ```
+```
+EmergencyTriage/
+├── src/                    # Source code
+│   ├── components/         # React components
+│   ├── pages/             # Page components
+│   ├── services/          # API services
+│   ├── utils/             # Utility functions
+│   └── types/             # TypeScript types
+├── prisma/                # Database schema and migrations
+├── public/                # Static assets
+├── scripts/               # Utility scripts
+└── tests/                 # Test files
+```
 
-4. **Run database migrations**:
-   ```
-   npm run db:push
-   ```
+## Contributing
 
-5. **Start the application**:
-   ```
-   npm run dev
-   ```
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-6. **Access the application**:
-   Open your browser and navigate to `http://localhost:5000`
+## License
 
-### Troubleshooting Login Issues
-
-If you're experiencing login problems in a local deployment, try these solutions:
-
-1. **Set SESSION_SECRET Environment Variable**:
-   Make sure you've set a SESSION_SECRET in your .env file:
-   ```
-   SESSION_SECRET=your_strong_secret_key
-   ```
-
-2. **Database Migration Check**:
-   Ensure tables are created properly:
-   ```
-   npm run db:push
-   ```
-
-3. **Create a Test User**:
-   If you're having trouble registering, try using this curl command to manually create a user:
-   ```
-   curl -X POST http://localhost:5000/api/register \
-     -H "Content-Type: application/json" \
-     -d '{"username": "testuser", "password": "password123"}'
-   ```
-
-4. **Check Database Connection**:
-   Verify your DATABASE_URL is correct and the database server is running
-
-5. **Port Conflicts**:
-   If port 5000 is already in use, modify the server to use a different port
-
-6. **Browser Issues**:
-   Try using a private/incognito window or clearing cookies for localhost
-
-### Containerized Deployment
-
-This application supports containerized deployment using Docker. For detailed instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
-
-**Quick Start with Docker Compose:**
-
-1. Build and start containers:
-   ```
-   docker-compose up -d
-   ```
-
-2. Access the application at http://localhost:5000
-
-**AWS Deployment:**
-
-The application includes configurations for deployment to:
-- AWS ECS (Elastic Container Service)
-- AWS EKS (Elastic Kubernetes Service)
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
-
-## Usage Guide
-
-1. **Login or Register**: Create an account or log in
-2. **Dashboard**: View the patient queue sorted by priority
-3. **Add New Patient**:
-   - Enter patient details and chief complaint
-   - Search for FHIR records (demo: try "Harry Potter" or "Ron Weasley")
-   - System calculates ESI level automatically
-   - Submit to add to queue
-4. **Update Patient Status**: Change status as patient progresses through treatment
-5. **Record Vital Signs**: Add vital measurements for ongoing assessment
-
-## Demo Data
-
-The system includes demo FHIR records for:
-- Harry Potter (with history of lightning scar curse, basilisk venom exposure)
-- Ron Weasley (with history of broken arm, anxiety, splinching injury)
-
-These can be accessed by searching for their names in the patient search.
+This project is licensed under the MIT License - see the LICENSE file for details.

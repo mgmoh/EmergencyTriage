@@ -1,10 +1,14 @@
-FROM node:20-alpine as builder
+# Build stage
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Copy package files
+COPY package*.json ./
+COPY drizzle.config.ts ./
+
 # Install dependencies
-COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -17,26 +21,23 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Set environment to production
-ENV NODE_ENV=production
-ENV NEXT_PUBLIC_FHIR_SERVER=${NEXT_PUBLIC_FHIR_SERVER:-https://hapi.fhir.org/baseR4}
+# Copy package files
+COPY package*.json ./
 
-# Copy package files and install production dependencies
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# Install production dependencies only
+RUN npm install --production
 
-# Copy built files from builder stage
+# Copy built files from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/shared ./shared
-COPY --from=builder /app/server/db.ts ./server/db.ts
-COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/drizzle.config.ts ./
 
-# Create a dedicated user for running the application
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
 
-# Expose the application port
-EXPOSE 5000
+# Expose port
+EXPOSE 3000
 
 # Start the application
 CMD ["node", "dist/server/index.js"]
