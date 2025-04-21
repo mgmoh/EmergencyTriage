@@ -295,35 +295,8 @@ export function useSearchFHIRPatient() {
         console.log('Search results:', data);
         
         if (data.total === 0) {
-          console.log('No existing patient found, creating new one');
-          // No existing patient found, create a new one
-          const createRes = await fetch(`${FHIR_SERVER}/Patient`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/fhir+json",
-              "Accept": "application/fhir+json"
-            },
-            body: JSON.stringify({
-              resourceType: "Patient",
-              name: [{
-                use: "official",
-                text: name
-              }]
-            })
-          });
-
-          if (!createRes.ok) {
-            throw new Error(`FHIR Create Error: ${createRes.status} ${createRes.statusText}`);
-          }
-
-          const newPatient = await createRes.json();
-          console.log('Created new patient:', newPatient);
-          
-          // Return the new patient with empty conditions array
-          return {
-            ...newPatient,
-            conditions: []
-          };
+          console.log('No existing patient found');
+          throw new Error("No patient found with that name");
         }
 
         // Return the first matching patient with their conditions
@@ -362,11 +335,12 @@ export function useSearchFHIRPatient() {
         };
         console.log('Returning patient with conditions:', result);
         return result;
-      } catch (error) {
+      } catch (error: unknown) {
         console.warn("FHIR server error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Could not search for patient.";
         toast({
           title: "FHIR Server Error",
-          description: "Could not search for or create patient.",
+          description: errorMessage,
           variant: "destructive"
         });
         throw error;

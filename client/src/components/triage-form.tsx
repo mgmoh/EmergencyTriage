@@ -21,6 +21,7 @@ interface PatientFormData {
   dateOfBirth: string;
   gender: string;
   chiefComplaint: string;
+  fhirId?: string;
 }
 
 export function TriageForm() {
@@ -58,28 +59,33 @@ export function TriageForm() {
   const createPatient = useMutation({
     mutationFn: async (data: PatientFormData) => {
       try {
-        // Create patient in FHIR server
-        const fhirResponse = await createFHIRPatient.mutateAsync({
-          resourceType: "Patient",
-          name: [{ text: data.name }],
-          birthDate: data.dateOfBirth,
-          gender: data.gender
-        });
+        let fhirId = data.fhirId;
+        
+        // If no FHIR ID exists, create a new patient in FHIR
+        if (!fhirId) {
+          const fhirResponse = await createFHIRPatient.mutateAsync({
+            resourceType: "Patient",
+            name: [{ text: data.name }],
+            birthDate: data.dateOfBirth,
+            gender: data.gender
+          });
 
-        console.log('Created FHIR patient:', fhirResponse); // Debug log
+          console.log('Created FHIR patient:', fhirResponse);
 
-        if (!fhirResponse.id) {
-          throw new Error("No FHIR ID returned from server");
+          if (!fhirResponse.id) {
+            throw new Error("No FHIR ID returned from server");
+          }
+          fhirId = fhirResponse.id;
         }
 
-        // Create patient in local database with FHIR ID
+        // Create or update patient in local database
         const patientData = {
           ...data,
-          fhirId: fhirResponse.id, // Store the FHIR ID
+          fhirId,
           priority: suggestedPriority || 5
         };
 
-        console.log('Creating local patient with data:', patientData); // Debug log
+        console.log('Creating/updating local patient with data:', patientData);
 
         const response = await fetch("/api/patients", {
           method: "POST",
@@ -92,13 +98,13 @@ export function TriageForm() {
         }
 
         const localPatient = await response.json();
-        console.log('Created local patient:', localPatient); // Debug log
+        console.log('Created/updated local patient:', localPatient);
 
-        // Add chief complaint as a condition
+        // Add chief complaint as a condition if it's a new patient or if the complaint is different
         if (data.chiefComplaint) {
           try {
             await addCondition.mutateAsync({
-              patientId: fhirResponse.id,
+              patientId: fhirId,
               chiefComplaint: data.chiefComplaint
             });
           } catch (error) {
@@ -114,20 +120,20 @@ export function TriageForm() {
       }
     },
     onSuccess: (data: any) => {
-      console.log('Patient creation success:', data); // Debug log
+      console.log('Patient creation success:', data);
       toast({
-        title: "Patient Created",
+        title: "Patient Added to Queue",
         description: "Patient has been added to the system.",
         variant: "default"
       });
       setPatient(data);
-      setFhirId(data.fhirId); // Set the FHIR ID in state
+      setFhirId(data.fhirId);
     },
     onError: (error: Error) => {
-      console.error('Patient creation error:', error); // Debug log
+      console.error('Patient creation error:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to create patient. Please try again.",
+        description: error.message || "Failed to add patient to queue. Please try again.",
         variant: "destructive"
       });
     }
@@ -177,7 +183,7 @@ export function TriageForm() {
                         setFhirId(undefined);
                         searchFHIRPatient.mutate(field.value, {
                           onSuccess: (data) => {
-                            console.log('Search result:', data); // Debug log
+                            console.log('Search result:', data);
                             setFhirId(data.id);
                             // Update form with patient data if found
                             if (data.name?.[0]?.text) {
@@ -189,18 +195,23 @@ export function TriageForm() {
                             if (data.gender) {
                               form.setValue('gender', data.gender);
                             }
+                            // Set the chief complaint from the most recent condition
+                            if (data.conditions && data.conditions.length > 0) {
+                              const latestCondition = data.conditions[data.conditions.length - 1];
+                              if (latestCondition.code?.text) {
+                                form.setValue('chiefComplaint', latestCondition.code.text);
+                              }
+                            }
                             toast({
-                              title: data.id.startsWith('mock-') ? "New Patient Created" : "Patient Found",
-                              description: data.id.startsWith('mock-') 
-                                ? "No existing patient found. Created a new record." 
-                                : "Medical history loaded successfully.",
+                              title: "Patient Found",
+                              description: "Patient information loaded successfully.",
                             });
                           },
                           onError: (error) => {
-                            console.error('Search error:', error); // Debug log
+                            console.error('Search error:', error);
                             toast({
-                              title: "Error",
-                              description: error.message,
+                              title: "Patient Not Found",
+                              description: "No patient found with that name. Please add them to the queue.",
                               variant: "destructive",
                             });
                           }
@@ -212,22 +223,21 @@ export function TriageForm() {
                     <Search className="h-4 w-4 mr-2" />
                     {searchFHIRPatient.isPending ? "Searching..." : "Search FHIR"}
                   </Button>
-                  {fhirId && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setFhirId(undefined);
-                        setSuggestedPriority(null);
-                      }}
-                    >
-                      Clear Search
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setFhirId(undefined);
+                      setSuggestedPriority(null);
+                      form.reset();
+                    }}
+                  >
+                    Clear Search
+                  </Button>
                 </div>
               </FormControl>
               <p className="text-sm text-muted-foreground mt-1">
-                Search for existing patients or create a new record
+                Search for existing patients or add a new patient to the queue
               </p>
             </FormItem>
           )}
