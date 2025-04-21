@@ -281,6 +281,8 @@ export function useSearchFHIRPatient() {
   const mutationOptions = {
     mutationFn: async (name: string) => {
       try {
+        console.log('Searching for patient with name:', name);
+        
         // Search for existing patients with this name
         const searchUrl = `${FHIR_SERVER}/Patient?name=${encodeURIComponent(name)}`;
         const res = await fetch(searchUrl);
@@ -290,8 +292,10 @@ export function useSearchFHIRPatient() {
         }
 
         const data: FHIRSearchResponse = await res.json();
+        console.log('Search results:', data);
         
         if (data.total === 0) {
+          console.log('No existing patient found, creating new one');
           // No existing patient found, create a new one
           const createRes = await fetch(`${FHIR_SERVER}/Patient`, {
             method: "POST",
@@ -313,14 +317,12 @@ export function useSearchFHIRPatient() {
           }
 
           const newPatient = await createRes.json();
+          console.log('Created new patient:', newPatient);
           
-          // Fetch conditions for the new patient (should be empty)
-          const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${newPatient.id}`);
-          const conditionsData = await conditionsRes.json();
-          
+          // Return the new patient with empty conditions array
           return {
             ...newPatient,
-            conditions: conditionsData.entry?.map((entry: any) => entry.resource) || []
+            conditions: []
           };
         }
 
@@ -330,13 +332,36 @@ export function useSearchFHIRPatient() {
           throw new Error("No patient found in search results");
         }
 
-        const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patient.id}`);
-        const conditionsData = await conditionsRes.json();
+        console.log('Found existing patient:', patient);
+
+        // Fetch conditions for the patient with retry
+        let conditionsData;
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        while (retryCount < maxRetries) {
+          const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patient.id}`);
+          if (!conditionsRes.ok) {
+            throw new Error(`FHIR Error: ${conditionsRes.status} ${conditionsRes.statusText}`);
+          }
+          conditionsData = await conditionsRes.json();
+          console.log(`Attempt ${retryCount + 1} - Fetched conditions:`, conditionsData);
+
+          if (conditionsData.total > 0 || retryCount === maxRetries - 1) {
+            break;
+          }
+
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          retryCount++;
+        }
         
-        return {
+        const result = {
           ...patient,
           conditions: conditionsData.entry?.map((entry: any) => entry.resource) || []
         };
+        console.log('Returning patient with conditions:', result);
+        return result;
       } catch (error) {
         console.warn("FHIR server error:", error);
         toast({
