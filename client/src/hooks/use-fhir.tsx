@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
-const FHIR_SERVER = "http://hapi.fhir.org/baseR4";
+const FHIR_SERVER = "https://hapi.fhir.org/baseR4";
 
 // Mock FHIR data for demonstration
 const MOCK_PATIENTS = {
