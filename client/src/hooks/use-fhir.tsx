@@ -1,5 +1,5 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery, useMutation, UseQueryOptions, UseMutationOptions } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 // Use a more reliable FHIR server
 const FHIR_SERVER = process.env.NEXT_PUBLIC_FHIR_SERVER || "https://r4.smarthealthit.org";
@@ -75,9 +75,46 @@ const mockConditions = [
   }
 ];
 
+interface FHIRPatient {
+  resourceType: string;
+  id: string;
+  meta?: {
+    versionId: string;
+    lastUpdated: string;
+  };
+  text?: {
+    status: string;
+    div: string;
+  };
+  identifier?: Array<{
+    use: string;
+    system: string;
+    value: string;
+  }>;
+  active?: boolean;
+  name?: Array<{
+    use: string;
+    family: string;
+    given: string[];
+  }>;
+  gender?: string;
+  birthDate?: string;
+  address?: Array<{
+    use: string;
+    line: string[];
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+  }>;
+  conditions?: typeof mockConditions;
+}
+
 export function useFHIRPatient(id: string | undefined) {
-  return useQuery({
-    queryKey: [`${FHIR_SERVER}/Patient/${id}`],
+  const { toast } = useToast();
+
+  const queryOptions = {
+    queryKey: [`${FHIR_SERVER}/Patient/${id}`] as const,
     queryFn: async () => {
       try {
         const res = await fetch(`${FHIR_SERVER}/Patient/${id}`);
@@ -97,17 +134,25 @@ export function useFHIRPatient(id: string | undefined) {
     enabled: !!id,
     retry: 1,
     staleTime: 5 * 60 * 1000, // 5 minutes
-    onError: (error) => {
-      toast.error("FHIR Server Error", {
-        description: "Using demo data instead. Some features may be limited.",
-        duration: 5000
-      });
-    }
-  });
+  } as const;
+
+  const query = useQuery<FHIRPatient, Error>(queryOptions);
+
+  if (query.isError) {
+    toast({
+      title: "FHIR Server Error",
+      description: "Using demo data instead. Some features may be limited.",
+      variant: "default"
+    });
+  }
+
+  return query;
 }
 
 export function useCreateFHIRPatient() {
-  return useMutation({
+  const { toast } = useToast();
+
+  const mutationOptions = {
     mutationFn: async (patientData: any) => {
       try {
         const res = await fetch(`${FHIR_SERVER}/Patient`, {
@@ -133,12 +178,18 @@ export function useCreateFHIRPatient() {
           conditions: mockConditions
         };
       }
-    },
-    onError: (error) => {
-      toast.error("FHIR Server Error", {
-        description: "Using demo data instead. Some features may be limited.",
-        duration: 5000
-      });
     }
-  });
+  } as const;
+
+  const mutation = useMutation<FHIRPatient, Error, any>(mutationOptions);
+
+  if (mutation.isError) {
+    toast({
+      title: "FHIR Server Error",
+      description: "Using demo data instead. Some features may be limited.",
+      variant: "default"
+    });
+  }
+
+  return mutation;
 }
