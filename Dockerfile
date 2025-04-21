@@ -13,6 +13,9 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# Create public directory if it doesn't exist
+RUN mkdir -p public
+
 # Build the application
 RUN npm run build
 
@@ -26,6 +29,9 @@ COPY package*.json ./
 
 # Install production dependencies only
 RUN npm install --production
+
+# Create necessary directories
+RUN mkdir -p dist/server public
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
