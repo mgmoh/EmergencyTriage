@@ -240,19 +240,23 @@ export function useCreateFHIRPatient() {
   const mutationOptions = {
     mutationFn: async (patientData: any) => {
       try {
-        console.log('Creating FHIR patient:', patientData);
+        console.log('Creating FHIR patient with data:', patientData);
 
         // Format the name properly for FHIR
+        const nameParts = patientData.name[0].text.split(' ');
         const formattedPatientData = {
-          ...patientData,
+          resourceType: "Patient",
           name: [{
             use: "official",
-            family: patientData.name[0].text.split(' ').pop(),
-            given: patientData.name[0].text.split(' ').slice(0, -1)
-          }]
+            family: nameParts.pop() || "", // Last name
+            given: nameParts, // First and middle names
+            text: patientData.name[0].text // Keep original text for reference
+          }],
+          birthDate: patientData.birthDate,
+          gender: patientData.gender
         };
 
-        console.log('Formatted patient data:', formattedPatientData);
+        console.log('Formatted FHIR patient data:', formattedPatientData);
 
         const res = await fetch(`${FHIR_SERVER}/Patient`, {
           method: "POST",
@@ -265,11 +269,20 @@ export function useCreateFHIRPatient() {
 
         if (!res.ok) {
           const errorData = await res.json();
+          console.error('FHIR server error response:', errorData);
           throw new Error(`FHIR Error: ${res.status} ${res.statusText} - ${JSON.stringify(errorData)}`);
         }
 
         const newPatient = await res.json();
-        console.log('Created FHIR patient:', newPatient);
+        console.log('FHIR server response:', newPatient);
+
+        // Verify the patient was created by fetching it
+        const verifyRes = await fetch(`${FHIR_SERVER}/Patient/${newPatient.id}`);
+        if (!verifyRes.ok) {
+          throw new Error(`Failed to verify patient creation: ${verifyRes.status} ${verifyRes.statusText}`);
+        }
+        const verifiedPatient = await verifyRes.json();
+        console.log('Verified patient data:', verifiedPatient);
 
         return newPatient;
       } catch (error) {
@@ -295,39 +308,51 @@ export function useSearchFHIRPatient() {
       try {
         console.log('Searching for patient with name:', name);
         
-        // Search for existing patients with this name
-        const searchUrl = `${FHIR_SERVER}/Patient?name=${encodeURIComponent(name)}&_sort=-_lastUpdated`;
-        const res = await fetch(searchUrl);
-        
-        if (!res.ok) {
-          throw new Error(`FHIR Search Error: ${res.status} ${res.statusText}`);
+        // Try different search strategies
+        const searchUrls = [
+          `${FHIR_SERVER}/Patient?name=${encodeURIComponent(name)}&_sort=-_lastUpdated`,
+          `${FHIR_SERVER}/Patient?name:contains=${encodeURIComponent(name)}&_sort=-_lastUpdated`,
+          `${FHIR_SERVER}/Patient?name:text=${encodeURIComponent(name)}&_sort=-_lastUpdated`
+        ];
+
+        let patient = null;
+        let conditionsData = null;
+
+        // Try each search strategy
+        for (const url of searchUrls) {
+          console.log('Trying search URL:', url);
+          const res = await fetch(url);
+          
+          if (!res.ok) {
+            console.warn(`Search failed for URL ${url}:`, res.status, res.statusText);
+            continue;
+          }
+
+          const data: FHIRSearchResponse = await res.json();
+          console.log('Search results for URL:', url, data);
+          
+          if (data.total > 0 && data.entry?.[0]?.resource) {
+            patient = data.entry[0].resource;
+            console.log('Found patient using URL:', url, patient);
+            break;
+          }
         }
 
-        const data: FHIRSearchResponse = await res.json();
-        console.log('Search results:', data);
-        
-        if (data.total === 0) {
-          console.log('No existing patient found');
+        if (!patient) {
+          console.log('No patient found with any search strategy');
           throw new Error("No patient found with that name");
         }
 
-        // Return the first matching patient with their conditions
-        const patient = data.entry?.[0]?.resource;
-        if (!patient) {
-          throw new Error("No patient found in search results");
-        }
-
-        console.log('Found existing patient:', patient);
-
         // Fetch conditions for the patient with retry
-        let conditionsData;
         let retryCount = 0;
         const maxRetries = 3;
 
         while (retryCount < maxRetries) {
           const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patient.id}&_sort=-_lastUpdated`);
           if (!conditionsRes.ok) {
-            throw new Error(`FHIR Error: ${conditionsRes.status} ${conditionsRes.statusText}`);
+            console.warn(`Failed to fetch conditions (attempt ${retryCount + 1}):`, conditionsRes.status, conditionsRes.statusText);
+            retryCount++;
+            continue;
           }
           conditionsData = await conditionsRes.json();
           console.log(`Attempt ${retryCount + 1} - Fetched conditions:`, conditionsData);
@@ -343,7 +368,7 @@ export function useSearchFHIRPatient() {
         
         const result = {
           ...patient,
-          conditions: conditionsData.entry?.map((entry: any) => entry.resource) || []
+          conditions: conditionsData?.entry?.map((entry: any) => entry.resource) || []
         };
         console.log('Returning patient with conditions:', result);
         return result;
