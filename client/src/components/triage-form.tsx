@@ -47,54 +47,48 @@ export function TriageForm() {
   };
 
   const createPatient = useMutation({
-    mutationFn: async (data: any) => {
-      if (!suggestedPriority) {
-        throw new Error("Priority level not calculated");
-      }
-
-      // Add chief complaint as a condition to the FHIR patient
-      if (fhirId) {
-        try {
-          await addCondition.mutateAsync({
-            patientId: fhirId,
-            chiefComplaint: data.chiefComplaint
-          });
-        } catch (error) {
-          console.warn("Failed to add condition to FHIR patient:", error);
-          // Continue with local database creation even if FHIR update fails
-        }
-      }
-
-      const patientData = {
-        ...data,
-        priority: suggestedPriority,
-        fhirId: fhirId || undefined, // Ensure fhirId is stored even if null
-      };
-
-      console.log('Creating patient with data:', patientData); // Debug log
-
-      const res = await apiRequest("POST", "/api/patients", patientData);
-      const result = await res.json();
-      console.log('Created patient result:', result); // Debug log
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/patients/queue"] });
-      toast({
-        title: "Success",
-        description: "Patient added to queue",
+    mutationFn: async (data: PatientFormData) => {
+      // Create patient in FHIR server
+      const fhirPatient = await createFHIRPatient.mutateAsync({
+        resourceType: "Patient",
+        name: [{ text: data.name }],
+        birthDate: data.dateOfBirth,
+        gender: data.gender
       });
-      form.reset();
-      setSuggestedPriority(null);
-      setFhirId(undefined);
+
+      console.log('Created FHIR patient:', fhirPatient); // Debug log
+
+      // Create patient in local database with FHIR ID
+      const patient = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          fhirId: fhirPatient.id // Store the FHIR ID
+        })
+      }).then(res => res.json());
+
+      console.log('Created local patient:', patient); // Debug log
+
+      return patient;
     },
-    onError: (error: Error) => {
+    onSuccess: (data) => {
+      console.log('Patient creation success:', data); // Debug log
+      toast({
+        title: "Patient Created",
+        description: "Patient has been added to the system.",
+        variant: "default"
+      });
+      setPatient(data);
+    },
+    onError: (error) => {
+      console.error('Patient creation error:', error); // Debug log
       toast({
         title: "Error",
-        description: error.message,
-        variant: "destructive",
+        description: "Failed to create patient. Please try again.",
+        variant: "destructive"
       });
-    },
+    }
   });
 
   const onSubmit = async (data: any) => {

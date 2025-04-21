@@ -217,7 +217,7 @@ export function useFHIRPatient(id: string | undefined) {
     },
     enabled: !!id,
     retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 30000),
+    retryDelay: (attemptIndex: number) => Math.min(1000 * Math.pow(2, attemptIndex), 30000),
     staleTime: 5 * 60 * 1000, // 5 minutes
   } as const;
 
@@ -430,31 +430,53 @@ export function useAddCondition() {
 
         console.log('Condition data:', conditionData); // Debug log
 
-        const res = await fetch(`${FHIR_SERVER}/Condition`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/fhir+json",
-            "Accept": "application/fhir+json"
-          },
-          body: JSON.stringify(conditionData)
-        });
+        // Try to create the condition with retries
+        let retryCount = 0;
+        const maxRetries = 3;
+        let newCondition;
 
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error('FHIR Error Response:', errorData); // Debug log
-          throw new Error(`FHIR Error: ${res.status} ${res.statusText} - ${JSON.stringify(errorData)}`);
-        }
+        while (retryCount < maxRetries) {
+          try {
+            const res = await fetch(`${FHIR_SERVER}/Condition`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/fhir+json",
+                "Accept": "application/fhir+json"
+              },
+              body: JSON.stringify(conditionData)
+            });
 
-        const newCondition = await res.json();
-        console.log('Created condition:', newCondition); // Debug log
-        
-        // Verify the condition was created by fetching it
-        const verifyRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patientId}`);
-        if (!verifyRes.ok) {
-          throw new Error(`Verification Error: ${verifyRes.status} ${verifyRes.statusText}`);
+            if (!res.ok) {
+              throw new Error(`FHIR Error: ${res.status} ${res.statusText}`);
+            }
+
+            newCondition = await res.json();
+            console.log(`Attempt ${retryCount + 1} - Created condition:`, newCondition);
+
+            // Verify the condition was created
+            const verifyRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patientId}`);
+            if (!verifyRes.ok) {
+              throw new Error(`Verification Error: ${verifyRes.status} ${verifyRes.statusText}`);
+            }
+            const verifyData = await verifyRes.json();
+            console.log('Verified conditions:', verifyData);
+
+            if (verifyData.total > 0) {
+              break;
+            }
+
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+            retryCount++;
+          } catch (error) {
+            console.error(`Attempt ${retryCount + 1} failed:`, error);
+            if (retryCount === maxRetries - 1) {
+              throw error;
+            }
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+            retryCount++;
+          }
         }
-        const verifyData = await verifyRes.json();
-        console.log('Verified conditions:', verifyData); // Debug log
         
         // Invalidate the patient query to force a refresh
         queryClient.invalidateQueries({ queryKey: [`${FHIR_SERVER}/Patient/${patientId}`] });
