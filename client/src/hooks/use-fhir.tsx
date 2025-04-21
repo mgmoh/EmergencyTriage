@@ -94,8 +94,9 @@ interface FHIRPatient {
   active?: boolean;
   name?: Array<{
     use: string;
-    family: string;
-    given: string[];
+    text?: string;
+    family?: string;
+    given?: string[];
   }>;
   gender?: string;
   birthDate?: string;
@@ -107,12 +108,36 @@ interface FHIRPatient {
     postalCode: string;
     country: string;
   }>;
-  conditions?: typeof mockConditions;
-  extension?: Array<{
-    url: string;
-    valueString?: string;
-    valueCode?: string;
-    valueDate?: string;
+  conditions?: Array<{
+    resourceType: "Condition";
+    id: string;
+    clinicalStatus: {
+      coding: Array<{
+        system: string;
+        code: string;
+        display: string;
+      }>;
+    };
+    code: {
+      coding: Array<{
+        system: string;
+        code: string;
+        display: string;
+      }>;
+      text: string;
+    };
+    subject: {
+      reference: string;
+    };
+    onsetDateTime?: string;
+    severity?: {
+      coding: Array<{
+        system: string;
+        code: string;
+        display: string;
+      }>;
+      text: string;
+    };
   }>;
 }
 
@@ -260,37 +285,40 @@ export function useSearchFHIRPatient() {
             throw new Error(`FHIR Create Error: ${createRes.status} ${createRes.statusText}`);
           }
 
-          return await createRes.json();
+          const newPatient = await createRes.json();
+          
+          // Fetch conditions for the new patient (should be empty)
+          const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${newPatient.id}`);
+          const conditionsData = await conditionsRes.json();
+          
+          return {
+            ...newPatient,
+            conditions: conditionsData.entry?.map((entry: any) => entry.resource) || []
+          };
         }
 
-        // Return the first matching patient
-        return data.entry?.[0].resource;
-      } catch (error) {
-        console.warn("FHIR server error, using mock data:", error);
+        // Return the first matching patient with their conditions
+        const patient = data.entry?.[0].resource;
+        const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patient.id}`);
+        const conditionsData = await conditionsRes.json();
+        
         return {
-          ...mockPatient,
-          id: `mock-${Date.now()}`,
-          name: [{
-            use: "official",
-            text: name
-          }],
-          conditions: mockConditions
+          ...patient,
+          conditions: conditionsData.entry?.map((entry: any) => entry.resource) || []
         };
+      } catch (error) {
+        console.warn("FHIR server error:", error);
+        toast({
+          title: "FHIR Server Error",
+          description: "Could not search for or create patient.",
+          variant: "destructive"
+        });
+        throw error;
       }
     }
   } as const;
 
-  const mutation = useMutation<FHIRPatient, Error, string>(mutationOptions);
-
-  if (mutation.isError) {
-    toast({
-      title: "FHIR Server Error",
-      description: "Using demo data instead. Some features may be limited.",
-      variant: "default"
-    });
-  }
-
-  return mutation;
+  return useMutation<FHIRPatient, Error, string>(mutationOptions);
 }
 
 export function useUpdateFHIRPatient() {
@@ -331,4 +359,60 @@ export function useUpdateFHIRPatient() {
   } as const;
 
   return useMutation<FHIRPatient, Error, { id: string; data: Partial<FHIRPatient> }>(mutationOptions);
+}
+
+export function useAddCondition() {
+  const { toast } = useToast();
+
+  const mutationOptions = {
+    mutationFn: async ({ patientId, chiefComplaint }: { patientId: string; chiefComplaint: string }) => {
+      try {
+        const res = await fetch(`${FHIR_SERVER}/Condition`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/fhir+json",
+            "Accept": "application/fhir+json"
+          },
+          body: JSON.stringify({
+            resourceType: "Condition",
+            clinicalStatus: {
+              coding: [{
+                system: "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                code: "active",
+                display: "Active"
+              }]
+            },
+            code: {
+              coding: [{
+                system: "http://snomed.info/sct",
+                code: "409586006", // Chief complaint code
+                display: "Chief complaint"
+              }],
+              text: chiefComplaint
+            },
+            subject: {
+              reference: `Patient/${patientId}`
+            },
+            onsetDateTime: new Date().toISOString()
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`FHIR Error: ${res.status} ${res.statusText}`);
+        }
+
+        return await res.json();
+      } catch (error) {
+        console.warn("FHIR server error:", error);
+        toast({
+          title: "FHIR Server Error",
+          description: "Could not add condition to patient record.",
+          variant: "destructive"
+        });
+        throw error;
+      }
+    }
+  } as const;
+
+  return useMutation<any, Error, { patientId: string; chiefComplaint: string }>(mutationOptions);
 }

@@ -13,7 +13,7 @@ import { calculateESILevel } from "@/lib/esi-calculator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useState } from "react";
 import { AlertCircle, Search } from "lucide-react";
-import { useFHIRPatient, useSearchFHIRPatient, useUpdateFHIRPatient } from "@/hooks/use-fhir";
+import { useFHIRPatient, useSearchFHIRPatient, useAddCondition } from "@/hooks/use-fhir";
 import { MedicalHistory } from "./medical-history";
 
 export function TriageForm() {
@@ -23,7 +23,7 @@ export function TriageForm() {
   const [fhirId, setFhirId] = useState<string | undefined>();
   const { data: fhirPatient } = useFHIRPatient(fhirId);
   const searchFHIRPatient = useSearchFHIRPatient();
-  const updateFHIRPatient = useUpdateFHIRPatient();
+  const addCondition = useAddCondition();
 
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
@@ -52,22 +52,15 @@ export function TriageForm() {
         throw new Error("Priority level not calculated");
       }
 
-      // Update FHIR patient with additional information if we have a FHIR ID
-      if (fhirId && !fhirId.startsWith('mock-')) {
+      // Add chief complaint as a condition to the FHIR patient
+      if (fhirId) {
         try {
-          await updateFHIRPatient.mutateAsync({
-            id: fhirId,
-            data: {
-              birthDate: data.dateOfBirth,
-              gender: data.gender,
-              extension: [{
-                url: "http://hl7.org/fhir/StructureDefinition/patient-chiefComplaint",
-                valueString: data.chiefComplaint
-              }]
-            }
+          await addCondition.mutateAsync({
+            patientId: fhirId,
+            chiefComplaint: data.chiefComplaint
           });
         } catch (error) {
-          console.warn("Failed to update FHIR patient:", error);
+          console.warn("Failed to add condition to FHIR patient:", error);
           // Continue with local database creation even if FHIR update fails
         }
       }
@@ -150,6 +143,13 @@ export function TriageForm() {
                               description: data.id.startsWith('mock-') 
                                 ? "No existing patient found. Created a new record." 
                                 : "Medical history loaded successfully.",
+                            });
+                          },
+                          onError: (error) => {
+                            toast({
+                              title: "Error",
+                              description: error.message,
+                              variant: "destructive",
                             });
                           }
                         });
