@@ -11,7 +11,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { calculateESILevel } from "@/lib/esi-calculator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AlertCircle, Search } from "lucide-react";
 import { useFHIRPatient, useSearchFHIRPatient, useAddCondition, useCreateFHIRPatient } from "@/hooks/use-fhir";
 import { MedicalHistory } from "./medical-history";
@@ -50,11 +50,18 @@ export function TriageForm() {
 
   // Update suggested priority when chief complaint changes
   const updateSuggestedPriority = () => {
-    if (chiefComplaint) {
-      const esiLevel = calculateESILevel(chiefComplaint, undefined, fhirPatient);
+    if (chiefComplaint && chiefComplaint.trim().length > 0) {
+      const esiLevel = calculateESILevel(chiefComplaint.trim(), undefined, fhirPatient);
       setSuggestedPriority(esiLevel);
+    } else {
+      setSuggestedPriority(null);
     }
   };
+
+  // Update ESI level when complaint changes
+  useEffect(() => {
+    updateSuggestedPriority();
+  }, [chiefComplaint]);
 
   const createPatient = useMutation({
     mutationFn: async (data: PatientFormData) => {
@@ -195,13 +202,7 @@ export function TriageForm() {
                             if (data.gender) {
                               form.setValue('gender', data.gender);
                             }
-                            // Set the chief complaint from the most recent condition
-                            if (data.conditions && data.conditions.length > 0) {
-                              const latestCondition = data.conditions[data.conditions.length - 1];
-                              if (latestCondition.code?.text) {
-                                form.setValue('chiefComplaint', latestCondition.code.text);
-                              }
-                            }
+                            // Don't populate chief complaint
                             toast({
                               title: "Patient Found",
                               description: "Patient information loaded successfully.",
@@ -299,11 +300,6 @@ export function TriageForm() {
                 <Textarea 
                   {...field} 
                   placeholder="Describe the main reason for visit"
-                  onChange={(e) => {
-                    field.onChange(e);
-                    // Update ESI level when complaint changes
-                    updateSuggestedPriority();
-                  }}
                 />
               </FormControl>
               <FormMessage />

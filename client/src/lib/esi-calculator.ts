@@ -8,16 +8,46 @@ const DANGER_ZONE = {
   temperature: { min: 36, max: 38.5 }, // Celsius
 };
 
-// High-risk conditions from medical history
+// High-risk conditions that affect ESI level
 const HIGH_RISK_CONDITIONS = [
   "diabetes",
-  "hypertension",
   "heart disease",
-  "copd",
-  "asthma",
-  "immunocompromised",
-  "cancer",
   "stroke",
+  "cancer",
+  "asthma",
+  "copd",
+  "kidney disease",
+  "liver disease",
+  "immunodeficiency",
+  "pregnancy"
+];
+
+// Keywords that indicate high severity
+const HIGH_SEVERITY_KEYWORDS = [
+  "chest pain",
+  "difficulty breathing",
+  "severe pain",
+  "unconscious",
+  "bleeding",
+  "stroke",
+  "heart attack",
+  "seizure",
+  "allergic reaction",
+  "overdose"
+];
+
+// Keywords that indicate moderate severity
+const MODERATE_SEVERITY_KEYWORDS = [
+  "fever",
+  "infection",
+  "pain",
+  "vomiting",
+  "diarrhea",
+  "rash",
+  "injury",
+  "sprain",
+  "headache",
+  "dizziness"
 ];
 
 // Resource prediction based on chief complaints
@@ -32,57 +62,96 @@ const RESOURCE_INTENSIVE_COMPLAINTS = [
 
 export function calculateESILevel(
   chiefComplaint: string,
-  vitals?: Partial<InsertVitals>,
-  fhirPatient?: any
+  vitals: any,
+  fhirPatient: any
 ): number {
+  // Start with default level (3)
+  let esiLevel = 3;
   const complaint = chiefComplaint.toLowerCase();
-  console.log('Calculating ESI level for complaint:', complaint);
-  console.log('Patient history:', fhirPatient?.conditions);
 
-  // Check medical history for high-risk conditions
-  const hasHighRiskHistory = checkHighRiskHistory(fhirPatient);
-  console.log('Has high-risk history:', hasHighRiskHistory);
-
-  // Level 1: Immediate life-saving intervention
-  if (isLevel1Condition(chiefComplaint, vitals)) {
-    console.log('Level 1: Immediate life-saving intervention needed');
-    return 1;
+  // Check for high severity keywords
+  if (HIGH_SEVERITY_KEYWORDS.some(keyword => complaint.includes(keyword))) {
+    esiLevel = 1;
+  }
+  // Check for moderate severity keywords
+  else if (MODERATE_SEVERITY_KEYWORDS.some(keyword => complaint.includes(keyword))) {
+    esiLevel = 2;
   }
 
-  // Check if the complaint matches any severe conditions in history
+  // Check medical history for high-risk conditions
   if (fhirPatient?.conditions) {
-    const relatedConditions = fhirPatient.conditions.filter((condition: any) => {
-      const conditionText = condition?.code?.text?.toLowerCase() || '';
-      const isRelated = complaint.includes(conditionText) || 
-                       conditionText.includes(complaint) ||
-                       isSymptomRelated(complaint, conditionText);
-      if (isRelated) {
-        console.log('Found related condition:', condition);
-      }
-      return isRelated;
+    const hasHighRiskCondition = fhirPatient.conditions.some((condition: any) => {
+      const conditionText = condition.code?.text?.toLowerCase() || "";
+      return HIGH_RISK_CONDITIONS.some(risk => conditionText.includes(risk));
     });
 
-    // If there's a matching condition marked as severe, escalate to level 2
-    const hasSevereRelatedCondition = relatedConditions.some(
-      (condition: any) => condition.severity?.toLowerCase() === 'severe'
-    );
-
-    if (hasSevereRelatedCondition) {
-      console.log('Level 2: Severe related condition in history');
-      return 2;
+    if (hasHighRiskCondition) {
+      // If patient has high-risk condition, increase severity by 1 level
+      esiLevel = Math.max(1, esiLevel - 1);
     }
   }
 
-  // Level 2: High risk or severe pain/distress
-  if (isLevel2Condition(chiefComplaint, vitals, hasHighRiskHistory)) {
-    console.log('Level 2: High risk or severe pain/distress');
-    return 2;
+  // Check vitals if available
+  if (vitals) {
+    // Check for abnormal vital signs
+    const abnormalVitals = checkAbnormalVitals(vitals);
+    if (abnormalVitals) {
+      // If abnormal vitals, increase severity by 1 level
+      esiLevel = Math.max(1, esiLevel - 1);
+    }
   }
 
-  // Level 3-5: Based on resource needs and medical history
-  const finalLevel = calculateResourceBasedLevel(chiefComplaint, hasHighRiskHistory);
-  console.log('Final ESI Level:', finalLevel);
-  return finalLevel;
+  // Ensure ESI level is between 1 and 5
+  return Math.min(Math.max(esiLevel, 1), 5);
+}
+
+function checkAbnormalVitals(vitals: any): boolean {
+  const {
+    temperature,
+    bloodPressure,
+    heartRate,
+    respiratoryRate,
+    oxygenSaturation,
+    painLevel
+  } = vitals;
+
+  // Check temperature
+  if (temperature) {
+    const temp = parseFloat(temperature);
+    if (temp < 35 || temp > 39) return true;
+  }
+
+  // Check blood pressure
+  if (bloodPressure) {
+    const [systolic, diastolic] = bloodPressure.split('/').map(Number);
+    if (systolic < 90 || systolic > 180 || diastolic < 60 || diastolic > 110) return true;
+  }
+
+  // Check heart rate
+  if (heartRate) {
+    const hr = parseInt(heartRate);
+    if (hr < 50 || hr > 100) return true;
+  }
+
+  // Check respiratory rate
+  if (respiratoryRate) {
+    const rr = parseInt(respiratoryRate);
+    if (rr < 12 || rr > 20) return true;
+  }
+
+  // Check oxygen saturation
+  if (oxygenSaturation) {
+    const spo2 = parseInt(oxygenSaturation);
+    if (spo2 < 95) return true;
+  }
+
+  // Check pain level
+  if (painLevel) {
+    const pain = parseInt(painLevel);
+    if (pain >= 7) return true;
+  }
+
+  return false;
 }
 
 function isSymptomRelated(complaint: string, condition: string): boolean {
