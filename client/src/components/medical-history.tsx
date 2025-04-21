@@ -21,11 +21,28 @@ interface MedicalHistoryProps {
 }
 
 export function MedicalHistory({ fhirPatient, currentComplaint }: MedicalHistoryProps) {
-  if (!fhirPatient?.conditions?.length) {
+  if (!fhirPatient) {
     return null;
   }
 
-  const conditions = fhirPatient.conditions;
+  const conditions = fhirPatient.conditions || [];
+  console.log('Medical History - Conditions:', conditions); // Debug log
+
+  if (conditions.length === 0) {
+    return (
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Heart className="h-5 w-5 text-primary" />
+            <CardTitle>Medical History</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No medical history available for this patient.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Separate conditions into high risk and others
   const highRiskConditions = conditions.filter((condition: any) => {

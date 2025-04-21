@@ -298,7 +298,11 @@ export function useSearchFHIRPatient() {
         }
 
         // Return the first matching patient with their conditions
-        const patient = data.entry?.[0].resource;
+        const patient = data.entry?.[0]?.resource;
+        if (!patient) {
+          throw new Error("No patient found in search results");
+        }
+
         const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patient.id}`);
         const conditionsData = await conditionsRes.json();
         
