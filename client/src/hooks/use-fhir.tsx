@@ -110,6 +110,15 @@ interface FHIRPatient {
   conditions?: typeof mockConditions;
 }
 
+interface FHIRSearchResponse {
+  resourceType: "Bundle";
+  type: "searchset";
+  total: number;
+  entry?: Array<{
+    resource: FHIRPatient;
+  }>;
+}
+
 export function useFHIRPatient(id: string | undefined) {
   const { toast } = useToast();
 
@@ -182,6 +191,76 @@ export function useCreateFHIRPatient() {
   } as const;
 
   const mutation = useMutation<FHIRPatient, Error, any>(mutationOptions);
+
+  if (mutation.isError) {
+    toast({
+      title: "FHIR Server Error",
+      description: "Using demo data instead. Some features may be limited.",
+      variant: "default"
+    });
+  }
+
+  return mutation;
+}
+
+export function useSearchFHIRPatient() {
+  const { toast } = useToast();
+
+  const mutationOptions = {
+    mutationFn: async (name: string) => {
+      try {
+        // Search for existing patients with this name
+        const searchUrl = `${FHIR_SERVER}/Patient?name=${encodeURIComponent(name)}`;
+        const res = await fetch(searchUrl);
+        
+        if (!res.ok) {
+          throw new Error(`FHIR Search Error: ${res.status} ${res.statusText}`);
+        }
+
+        const data: FHIRSearchResponse = await res.json();
+        
+        if (data.total === 0) {
+          // No existing patient found, create a new one
+          const createRes = await fetch(`${FHIR_SERVER}/Patient`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/fhir+json",
+              "Accept": "application/fhir+json"
+            },
+            body: JSON.stringify({
+              resourceType: "Patient",
+              name: [{
+                use: "official",
+                text: name
+              }]
+            })
+          });
+
+          if (!createRes.ok) {
+            throw new Error(`FHIR Create Error: ${createRes.status} ${createRes.statusText}`);
+          }
+
+          return await createRes.json();
+        }
+
+        // Return the first matching patient
+        return data.entry?.[0].resource;
+      } catch (error) {
+        console.warn("FHIR server error, using mock data:", error);
+        return {
+          ...mockPatient,
+          id: `mock-${Date.now()}`,
+          name: [{
+            use: "official",
+            text: name
+          }],
+          conditions: mockConditions
+        };
+      }
+    }
+  } as const;
+
+  const mutation = useMutation<FHIRPatient, Error, string>(mutationOptions);
 
   if (mutation.isError) {
     toast({

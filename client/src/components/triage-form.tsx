@@ -13,7 +13,7 @@ import { calculateESILevel } from "@/lib/esi-calculator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useState } from "react";
 import { AlertCircle, Search } from "lucide-react";
-import { useFHIRPatient, useCreateFHIRPatient } from "@/hooks/use-fhir";
+import { useFHIRPatient, useSearchFHIRPatient } from "@/hooks/use-fhir";
 import { MedicalHistory } from "./medical-history";
 
 export function TriageForm() {
@@ -22,7 +22,7 @@ export function TriageForm() {
   const [suggestedPriority, setSuggestedPriority] = useState<number | null>(null);
   const [fhirId, setFhirId] = useState<string | undefined>();
   const { data: fhirPatient } = useFHIRPatient(fhirId);
-  const createFHIRPatient = useCreateFHIRPatient();
+  const searchFHIRPatient = useSearchFHIRPatient();
 
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
@@ -113,36 +113,32 @@ export function TriageForm() {
               <FormLabel>Patient Name</FormLabel>
               <FormControl>
                 <div className="flex gap-2">
-                  <Input {...field} placeholder="Try 'Harry Potter' or 'Ron Weasley'" />
+                  <Input {...field} placeholder="Enter patient name" />
                   <Button
                     type="button"
                     variant="outline"
                     className="shrink-0"
                     onClick={() => {
-                      // Create a new FHIR patient record if none exists
                       if (field.value) {
                         // Reset previous search results
                         setFhirId(undefined);
-                        createFHIRPatient.mutate({
-                          resourceType: "Patient",
-                          name: [{
-                            use: "official",
-                            text: field.value
-                          }]
-                        }, {
+                        searchFHIRPatient.mutate(field.value, {
                           onSuccess: (data) => {
                             setFhirId(data.id);
                             toast({
-                              title: "Patient Found",
-                              description: "Medical history loaded successfully.",
+                              title: data.id.startsWith('mock-') ? "New Patient Created" : "Patient Found",
+                              description: data.id.startsWith('mock-') 
+                                ? "No existing patient found. Created a new record." 
+                                : "Medical history loaded successfully.",
                             });
                           }
                         });
                       }
                     }}
+                    disabled={searchFHIRPatient.isPending}
                   >
                     <Search className="h-4 w-4 mr-2" />
-                    Search FHIR
+                    {searchFHIRPatient.isPending ? "Searching..." : "Search FHIR"}
                   </Button>
                   {fhirId && (
                     <Button
@@ -159,9 +155,8 @@ export function TriageForm() {
                 </div>
               </FormControl>
               <p className="text-sm text-muted-foreground mt-1">
-                Demo: Try searching for "Harry Potter" or "Ron Weasley"
+                Search for existing patients or create a new record
               </p>
-              <FormMessage />
             </FormItem>
           )}
         />
