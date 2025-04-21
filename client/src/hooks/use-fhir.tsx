@@ -157,6 +157,12 @@ export function useFHIRPatient(id: string | undefined) {
     queryKey: [`${FHIR_SERVER}/Patient/${id}`] as const,
     queryFn: async () => {
       try {
+        if (!id) {
+          throw new Error("No patient ID provided");
+        }
+
+        console.log('Fetching patient:', id); // Debug log
+
         // Fetch patient data
         const patientRes = await fetch(`${FHIR_SERVER}/Patient/${id}`);
         if (!patientRes.ok) {
@@ -165,13 +171,27 @@ export function useFHIRPatient(id: string | undefined) {
         const patientData = await patientRes.json();
         console.log('Fetched patient data:', patientData);
 
-        // Fetch conditions for the patient
-        const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${id}`);
-        if (!conditionsRes.ok) {
-          throw new Error(`FHIR Error: ${conditionsRes.status} ${conditionsRes.statusText}`);
+        // Fetch conditions for the patient with retry
+        let conditionsData;
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        while (retryCount < maxRetries) {
+          const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${id}`);
+          if (!conditionsRes.ok) {
+            throw new Error(`FHIR Error: ${conditionsRes.status} ${conditionsRes.statusText}`);
+          }
+          conditionsData = await conditionsRes.json();
+          console.log(`Attempt ${retryCount + 1} - Fetched conditions:`, conditionsData);
+
+          if (conditionsData.total > 0 || retryCount === maxRetries - 1) {
+            break;
+          }
+
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          retryCount++;
         }
-        const conditionsData = await conditionsRes.json();
-        console.log('Fetched conditions data:', conditionsData);
 
         // Combine patient data with conditions
         const combinedData = {
@@ -182,7 +202,12 @@ export function useFHIRPatient(id: string | undefined) {
 
         return combinedData;
       } catch (error) {
-        console.warn("FHIR server error, using mock data:", error);
+        console.error("FHIR server error:", error);
+        toast({
+          title: "FHIR Server Error",
+          description: "Using demo data instead. Some features may be limited.",
+          variant: "default"
+        });
         return {
           ...mockPatient,
           id,
@@ -191,7 +216,8 @@ export function useFHIRPatient(id: string | undefined) {
       }
     },
     enabled: !!id,
-    retry: 1,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 30000),
     staleTime: 5 * 60 * 1000, // 5 minutes
   } as const;
 
@@ -377,48 +403,65 @@ export function useAddCondition() {
   const mutationOptions = {
     mutationFn: async ({ patientId, chiefComplaint }: { patientId: string; chiefComplaint: string }) => {
       try {
+        console.log('Adding condition for patient:', patientId); // Debug log
+        
+        const conditionData = {
+          resourceType: "Condition",
+          clinicalStatus: {
+            coding: [{
+              system: "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              code: "active",
+              display: "Active"
+            }]
+          },
+          code: {
+            coding: [{
+              system: "http://snomed.info/sct",
+              code: "409586006",
+              display: "Chief complaint"
+            }],
+            text: chiefComplaint
+          },
+          subject: {
+            reference: `Patient/${patientId}`
+          },
+          onsetDateTime: new Date().toISOString()
+        };
+
+        console.log('Condition data:', conditionData); // Debug log
+
         const res = await fetch(`${FHIR_SERVER}/Condition`, {
           method: "POST",
           headers: {
             "Content-Type": "application/fhir+json",
             "Accept": "application/fhir+json"
           },
-          body: JSON.stringify({
-            resourceType: "Condition",
-            clinicalStatus: {
-              coding: [{
-                system: "http://terminology.hl7.org/CodeSystem/condition-clinical",
-                code: "active",
-                display: "Active"
-              }]
-            },
-            code: {
-              coding: [{
-                system: "http://snomed.info/sct",
-                code: "409586006", // Chief complaint code
-                display: "Chief complaint"
-              }],
-              text: chiefComplaint
-            },
-            subject: {
-              reference: `Patient/${patientId}`
-            },
-            onsetDateTime: new Date().toISOString()
-          })
+          body: JSON.stringify(conditionData)
         });
 
         if (!res.ok) {
-          throw new Error(`FHIR Error: ${res.status} ${res.statusText}`);
+          const errorData = await res.json();
+          console.error('FHIR Error Response:', errorData); // Debug log
+          throw new Error(`FHIR Error: ${res.status} ${res.statusText} - ${JSON.stringify(errorData)}`);
         }
 
         const newCondition = await res.json();
+        console.log('Created condition:', newCondition); // Debug log
+        
+        // Verify the condition was created by fetching it
+        const verifyRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patientId}`);
+        if (!verifyRes.ok) {
+          throw new Error(`Verification Error: ${verifyRes.status} ${verifyRes.statusText}`);
+        }
+        const verifyData = await verifyRes.json();
+        console.log('Verified conditions:', verifyData); // Debug log
         
         // Invalidate the patient query to force a refresh
         queryClient.invalidateQueries({ queryKey: [`${FHIR_SERVER}/Patient/${patientId}`] });
         
         return newCondition;
       } catch (error) {
-        console.warn("FHIR server error:", error);
+        console.error("FHIR server error:", error);
         toast({
           title: "FHIR Server Error",
           description: "Could not add condition to patient record.",
