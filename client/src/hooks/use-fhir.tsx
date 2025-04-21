@@ -1,4 +1,4 @@
-import { useQuery, useMutation, UseQueryOptions, UseMutationOptions } from "@tanstack/react-query";
+import { useQuery, useMutation, UseQueryOptions, UseMutationOptions, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 // Use a more reliable FHIR server
@@ -163,6 +163,7 @@ export function useFHIRPatient(id: string | undefined) {
           throw new Error(`FHIR Error: ${patientRes.status} ${patientRes.statusText}`);
         }
         const patientData = await patientRes.json();
+        console.log('Fetched patient data:', patientData);
 
         // Fetch conditions for the patient
         const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${id}`);
@@ -170,12 +171,16 @@ export function useFHIRPatient(id: string | undefined) {
           throw new Error(`FHIR Error: ${conditionsRes.status} ${conditionsRes.statusText}`);
         }
         const conditionsData = await conditionsRes.json();
+        console.log('Fetched conditions data:', conditionsData);
 
         // Combine patient data with conditions
-        return {
+        const combinedData = {
           ...patientData,
           conditions: conditionsData.entry?.map((entry: any) => entry.resource) || []
         };
+        console.log('Combined patient and conditions data:', combinedData);
+
+        return combinedData;
       } catch (error) {
         console.warn("FHIR server error, using mock data:", error);
         return {
@@ -367,6 +372,7 @@ export function useUpdateFHIRPatient() {
 
 export function useAddCondition() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const mutationOptions = {
     mutationFn: async ({ patientId, chiefComplaint }: { patientId: string; chiefComplaint: string }) => {
@@ -405,7 +411,12 @@ export function useAddCondition() {
           throw new Error(`FHIR Error: ${res.status} ${res.statusText}`);
         }
 
-        return await res.json();
+        const newCondition = await res.json();
+        
+        // Invalidate the patient query to force a refresh
+        queryClient.invalidateQueries({ queryKey: [`${FHIR_SERVER}/Patient/${patientId}`] });
+        
+        return newCondition;
       } catch (error) {
         console.warn("FHIR server error:", error);
         toast({
