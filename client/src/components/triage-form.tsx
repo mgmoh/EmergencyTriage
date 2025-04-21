@@ -68,11 +68,15 @@ export function TriageForm() {
       const patientData = {
         ...data,
         priority: suggestedPriority,
-        fhirId: fhirId,
+        fhirId: fhirId || undefined, // Ensure fhirId is stored even if null
       };
 
+      console.log('Creating patient with data:', patientData); // Debug log
+
       const res = await apiRequest("POST", "/api/patients", patientData);
-      return res.json();
+      const result = await res.json();
+      console.log('Created patient result:', result); // Debug log
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients/queue"] });
@@ -137,7 +141,18 @@ export function TriageForm() {
                         setFhirId(undefined);
                         searchFHIRPatient.mutate(field.value, {
                           onSuccess: (data) => {
+                            console.log('Search result:', data); // Debug log
                             setFhirId(data.id);
+                            // Update form with patient data if found
+                            if (data.name?.[0]?.text) {
+                              form.setValue('name', data.name[0].text);
+                            }
+                            if (data.birthDate) {
+                              form.setValue('dateOfBirth', data.birthDate);
+                            }
+                            if (data.gender) {
+                              form.setValue('gender', data.gender);
+                            }
                             toast({
                               title: data.id.startsWith('mock-') ? "New Patient Created" : "Patient Found",
                               description: data.id.startsWith('mock-') 
@@ -146,6 +161,7 @@ export function TriageForm() {
                             });
                           },
                           onError: (error) => {
+                            console.error('Search error:', error); // Debug log
                             toast({
                               title: "Error",
                               description: error.message,
