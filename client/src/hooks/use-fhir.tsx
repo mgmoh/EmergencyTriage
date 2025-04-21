@@ -240,7 +240,19 @@ export function useCreateFHIRPatient() {
   const mutationOptions = {
     mutationFn: async (patientData: any) => {
       try {
-        console.log('Creating FHIR patient:', patientData); // Debug log
+        console.log('Creating FHIR patient:', patientData);
+
+        // Format the name properly for FHIR
+        const formattedPatientData = {
+          ...patientData,
+          name: [{
+            use: "official",
+            family: patientData.name[0].text.split(' ').pop(),
+            given: patientData.name[0].text.split(' ').slice(0, -1)
+          }]
+        };
+
+        console.log('Formatted patient data:', formattedPatientData);
 
         const res = await fetch(`${FHIR_SERVER}/Patient`, {
           method: "POST",
@@ -248,7 +260,7 @@ export function useCreateFHIRPatient() {
             "Content-Type": "application/fhir+json",
             "Accept": "application/fhir+json"
           },
-          body: JSON.stringify(patientData)
+          body: JSON.stringify(formattedPatientData)
         });
 
         if (!res.ok) {
@@ -257,7 +269,7 @@ export function useCreateFHIRPatient() {
         }
 
         const newPatient = await res.json();
-        console.log('Created FHIR patient:', newPatient); // Debug log
+        console.log('Created FHIR patient:', newPatient);
 
         return newPatient;
       } catch (error) {
@@ -284,7 +296,7 @@ export function useSearchFHIRPatient() {
         console.log('Searching for patient with name:', name);
         
         // Search for existing patients with this name
-        const searchUrl = `${FHIR_SERVER}/Patient?name=${encodeURIComponent(name)}`;
+        const searchUrl = `${FHIR_SERVER}/Patient?name=${encodeURIComponent(name)}&_sort=-_lastUpdated`;
         const res = await fetch(searchUrl);
         
         if (!res.ok) {
@@ -313,7 +325,7 @@ export function useSearchFHIRPatient() {
         const maxRetries = 3;
 
         while (retryCount < maxRetries) {
-          const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patient.id}`);
+          const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${patient.id}&_sort=-_lastUpdated`);
           if (!conditionsRes.ok) {
             throw new Error(`FHIR Error: ${conditionsRes.status} ${conditionsRes.statusText}`);
           }
