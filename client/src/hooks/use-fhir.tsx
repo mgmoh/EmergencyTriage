@@ -90,25 +90,35 @@ export function useCreateFHIRPatient() {
           method: "POST",
           headers: {
             "Content-Type": "application/fhir+json",
+            "Accept": "application/fhir+json"
           },
           body: JSON.stringify(patientData),
         });
 
         if (!res.ok) {
-          throw new Error("Failed to create FHIR patient");
+          const errorData = await res.json().catch(() => null);
+          throw new Error(
+            `Failed to create FHIR patient: ${res.status} ${res.statusText}${
+              errorData ? ` - ${JSON.stringify(errorData)}` : ""
+            }`
+          );
         }
 
         return await res.json();
       } catch (error) {
+        console.error("FHIR Patient Creation Error:", error);
         toast({
           title: "FHIR Error",
-          description: "Patient not found. Try searching for 'Harry Potter' or 'Ron Weasley' for demo data.",
+          description: error instanceof Error 
+            ? error.message 
+            : "Failed to create patient. Please check the console for details.",
           variant: "destructive",
         });
         throw error;
       }
     },
     onError: (error: Error) => {
+      console.error("FHIR Mutation Error:", error);
       toast({
         title: "FHIR Error",
         description: error.message,
