@@ -57,31 +57,63 @@ export function TriageForm() {
 
   const createPatient = useMutation({
     mutationFn: async (data: PatientFormData) => {
-      // Create patient in FHIR server
-      const fhirPatient = await createFHIRPatient.mutateAsync({
-        resourceType: "Patient",
-        name: [{ text: data.name }],
-        birthDate: data.dateOfBirth,
-        gender: data.gender
-      });
+      try {
+        // Create patient in FHIR server
+        const fhirResponse = await createFHIRPatient.mutateAsync({
+          resourceType: "Patient",
+          name: [{ text: data.name }],
+          birthDate: data.dateOfBirth,
+          gender: data.gender
+        });
 
-      console.log('Created FHIR patient:', fhirPatient); // Debug log
+        console.log('Created FHIR patient:', fhirResponse); // Debug log
 
-      // Create patient in local database with FHIR ID
-      const patient = await fetch("/api/patients", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        if (!fhirResponse.id) {
+          throw new Error("No FHIR ID returned from server");
+        }
+
+        // Create patient in local database with FHIR ID
+        const patientData = {
           ...data,
-          fhirId: fhirPatient.id // Store the FHIR ID
-        })
-      }).then(res => res.json());
+          fhirId: fhirResponse.id, // Store the FHIR ID
+          priority: suggestedPriority || 5
+        };
 
-      console.log('Created local patient:', patient); // Debug log
+        console.log('Creating local patient with data:', patientData); // Debug log
 
-      return patient;
+        const response = await fetch("/api/patients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patientData)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to create local patient: ${response.statusText}`);
+        }
+
+        const localPatient = await response.json();
+        console.log('Created local patient:', localPatient); // Debug log
+
+        // Add chief complaint as a condition
+        if (data.chiefComplaint) {
+          try {
+            await addCondition.mutateAsync({
+              patientId: fhirResponse.id,
+              chiefComplaint: data.chiefComplaint
+            });
+          } catch (error) {
+            console.error("Failed to add condition:", error);
+            // Continue even if condition creation fails
+          }
+        }
+
+        return localPatient;
+      } catch (error) {
+        console.error('Patient creation error:', error);
+        throw error;
+      }
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       console.log('Patient creation success:', data); // Debug log
       toast({
         title: "Patient Created",
@@ -89,12 +121,13 @@ export function TriageForm() {
         variant: "default"
       });
       setPatient(data);
+      setFhirId(data.fhirId); // Set the FHIR ID in state
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Patient creation error:', error); // Debug log
       toast({
         title: "Error",
-        description: "Failed to create patient. Please try again.",
+        description: error.message || "Failed to create patient. Please try again.",
         variant: "destructive"
       });
     }
