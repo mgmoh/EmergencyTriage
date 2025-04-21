@@ -108,6 +108,12 @@ interface FHIRPatient {
     country: string;
   }>;
   conditions?: typeof mockConditions;
+  extension?: Array<{
+    url: string;
+    valueString?: string;
+    valueCode?: string;
+    valueDate?: string;
+  }>;
 }
 
 interface FHIRSearchResponse {
@@ -271,4 +277,44 @@ export function useSearchFHIRPatient() {
   }
 
   return mutation;
+}
+
+export function useUpdateFHIRPatient() {
+  const { toast } = useToast();
+
+  const mutationOptions = {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<FHIRPatient> }) => {
+      try {
+        const res = await fetch(`${FHIR_SERVER}/Patient/${id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/fhir+json",
+            "Accept": "application/fhir+json"
+          },
+          body: JSON.stringify({
+            ...data,
+            resourceType: "Patient",
+            id: id
+          })
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(`FHIR Update Error: ${res.status} ${res.statusText} - ${JSON.stringify(errorData)}`);
+        }
+
+        return await res.json();
+      } catch (error) {
+        console.warn("FHIR server error:", error);
+        toast({
+          title: "FHIR Update Error",
+          description: "Could not update patient information in FHIR server.",
+          variant: "destructive"
+        });
+        throw error;
+      }
+    }
+  } as const;
+
+  return useMutation<FHIRPatient, Error, { id: string; data: Partial<FHIRPatient> }>(mutationOptions);
 }

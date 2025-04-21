@@ -13,7 +13,7 @@ import { calculateESILevel } from "@/lib/esi-calculator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useState } from "react";
 import { AlertCircle, Search } from "lucide-react";
-import { useFHIRPatient, useSearchFHIRPatient } from "@/hooks/use-fhir";
+import { useFHIRPatient, useSearchFHIRPatient, useUpdateFHIRPatient } from "@/hooks/use-fhir";
 import { MedicalHistory } from "./medical-history";
 
 export function TriageForm() {
@@ -23,6 +23,7 @@ export function TriageForm() {
   const [fhirId, setFhirId] = useState<string | undefined>();
   const { data: fhirPatient } = useFHIRPatient(fhirId);
   const searchFHIRPatient = useSearchFHIRPatient();
+  const updateFHIRPatient = useUpdateFHIRPatient();
 
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
@@ -51,6 +52,26 @@ export function TriageForm() {
         throw new Error("Priority level not calculated");
       }
 
+      // Update FHIR patient with additional information if we have a FHIR ID
+      if (fhirId && !fhirId.startsWith('mock-')) {
+        try {
+          await updateFHIRPatient.mutateAsync({
+            id: fhirId,
+            data: {
+              birthDate: data.dateOfBirth,
+              gender: data.gender,
+              extension: [{
+                url: "http://hl7.org/fhir/StructureDefinition/patient-chiefComplaint",
+                valueString: data.chiefComplaint
+              }]
+            }
+          });
+        } catch (error) {
+          console.warn("Failed to update FHIR patient:", error);
+          // Continue with local database creation even if FHIR update fails
+        }
+      }
+
       const patientData = {
         ...data,
         priority: suggestedPriority,
@@ -58,8 +79,7 @@ export function TriageForm() {
       };
 
       const res = await apiRequest("POST", "/api/patients", patientData);
-      const responseData = await res.json();
-      return responseData;
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients/queue"] });
