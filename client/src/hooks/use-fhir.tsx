@@ -240,6 +240,8 @@ export function useCreateFHIRPatient() {
   const mutationOptions = {
     mutationFn: async (patientData: any) => {
       try {
+        console.log('Creating FHIR patient:', patientData); // Debug log
+
         const res = await fetch(`${FHIR_SERVER}/Patient`, {
           method: "POST",
           headers: {
@@ -254,29 +256,23 @@ export function useCreateFHIRPatient() {
           throw new Error(`FHIR Error: ${res.status} ${res.statusText} - ${JSON.stringify(errorData)}`);
         }
 
-        return await res.json();
+        const newPatient = await res.json();
+        console.log('Created FHIR patient:', newPatient); // Debug log
+
+        return newPatient;
       } catch (error) {
-        console.warn("FHIR server error, using mock data:", error);
-        return {
-          ...mockPatient,
-          id: `mock-${Date.now()}`,
-          conditions: mockConditions
-        };
+        console.error("FHIR server error:", error);
+        toast({
+          title: "FHIR Server Error",
+          description: "Could not create patient in FHIR server.",
+          variant: "destructive"
+        });
+        throw error;
       }
     }
   } as const;
 
-  const mutation = useMutation<FHIRPatient, Error, any>(mutationOptions);
-
-  if (mutation.isError) {
-    toast({
-      title: "FHIR Server Error",
-      description: "Using demo data instead. Some features may be limited.",
-      variant: "default"
-    });
-  }
-
-  return mutation;
+  return useMutation<any, Error, any>(mutationOptions);
 }
 
 export function useSearchFHIRPatient() {

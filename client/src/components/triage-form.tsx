@@ -13,17 +13,26 @@ import { calculateESILevel } from "@/lib/esi-calculator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useState } from "react";
 import { AlertCircle, Search } from "lucide-react";
-import { useFHIRPatient, useSearchFHIRPatient, useAddCondition } from "@/hooks/use-fhir";
+import { useFHIRPatient, useSearchFHIRPatient, useAddCondition, useCreateFHIRPatient } from "@/hooks/use-fhir";
 import { MedicalHistory } from "./medical-history";
+
+interface PatientFormData {
+  name: string;
+  dateOfBirth: string;
+  gender: string;
+  chiefComplaint: string;
+}
 
 export function TriageForm() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [suggestedPriority, setSuggestedPriority] = useState<number | null>(null);
   const [fhirId, setFhirId] = useState<string | undefined>();
+  const [patient, setPatient] = useState<any>(null);
   const { data: fhirPatient } = useFHIRPatient(fhirId);
   const searchFHIRPatient = useSearchFHIRPatient();
   const addCondition = useAddCondition();
+  const createFHIRPatient = useCreateFHIRPatient();
 
   const form = useForm({
     resolver: zodResolver(insertPatientSchema),
