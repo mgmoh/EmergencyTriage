@@ -132,11 +132,25 @@ export function useFHIRPatient(id: string | undefined) {
     queryKey: [`${FHIR_SERVER}/Patient/${id}`] as const,
     queryFn: async () => {
       try {
-        const res = await fetch(`${FHIR_SERVER}/Patient/${id}`);
-        if (!res.ok) {
-          throw new Error(`FHIR Error: ${res.status} ${res.statusText}`);
+        // Fetch patient data
+        const patientRes = await fetch(`${FHIR_SERVER}/Patient/${id}`);
+        if (!patientRes.ok) {
+          throw new Error(`FHIR Error: ${patientRes.status} ${patientRes.statusText}`);
         }
-        return await res.json();
+        const patientData = await patientRes.json();
+
+        // Fetch conditions for the patient
+        const conditionsRes = await fetch(`${FHIR_SERVER}/Condition?patient=${id}`);
+        if (!conditionsRes.ok) {
+          throw new Error(`FHIR Error: ${conditionsRes.status} ${conditionsRes.statusText}`);
+        }
+        const conditionsData = await conditionsRes.json();
+
+        // Combine patient data with conditions
+        return {
+          ...patientData,
+          conditions: conditionsData.entry?.map((entry: any) => entry.resource) || []
+        };
       } catch (error) {
         console.warn("FHIR server error, using mock data:", error);
         return {
