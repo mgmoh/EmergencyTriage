@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
-import { useFHIRPatient, useSearchFHIRPatient, useAddCondition } from "@/hooks/use-fhir";
+import { useFHIRPatient, useSearchFHIRPatient, useAddCondition, useCreateFHIRPatient } from "@/hooks/use-fhir";
 import { MedicalHistory } from "./medical-history";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ export function TriageForm() {
 
   const { mutate: searchFHIRPatient } = useSearchFHIRPatient();
   const { mutate: addCondition } = useAddCondition();
+  const { mutate: createFHIRPatient } = useCreateFHIRPatient();
 
   const form = useForm<TriageFormData>({
     resolver: zodResolver(triageSchema),
@@ -54,6 +55,21 @@ export function TriageForm() {
       },
     },
   });
+
+  const createPatient = async (data: { name: string; dateOfBirth: string; gender: string }) => {
+    try {
+      const response = await createFHIRPatient({
+        resourceType: "Patient",
+        name: [{ text: data.name }],
+        birthDate: data.dateOfBirth,
+        gender: data.gender,
+      });
+      return response.id;
+    } catch (error) {
+      console.error("Failed to create patient:", error);
+      throw error;
+    }
+  };
 
   const onSubmit = async (data: TriageFormData) => {
     try {
@@ -79,14 +95,14 @@ export function TriageForm() {
   const handleSearch = (field: string, value: string) => {
     setFhirPatient(null);
     searchFHIRPatient(
-      { field, value },
+      value,
       {
         onSuccess: (data) => {
           if (data) {
             setFhirPatient(data);
             form.setValue("name", data.name?.[0]?.given?.[0] || "");
             form.setValue("dateOfBirth", data.birthDate || "");
-            form.setValue("gender", data.gender || "other");
+            form.setValue("gender", (data.gender || "other") as "male" | "female" | "other");
             toast({
               title: "Patient found",
               description: "Patient data has been loaded",
@@ -147,7 +163,7 @@ export function TriageForm() {
             <div className="space-y-2">
               <Label htmlFor="gender">Gender</Label>
               <Select
-                onValueChange={(value) => form.setValue("gender", value as any)}
+                onValueChange={(value) => form.setValue("gender", value as "male" | "female" | "other")}
                 defaultValue={form.getValues("gender")}
               >
                 <SelectTrigger>

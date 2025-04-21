@@ -60,10 +60,30 @@ const RESOURCE_INTENSIVE_COMPLAINTS = [
   "head injury",
 ];
 
+interface Condition {
+  code: {
+    coding: Array<{
+      code: string;
+      display: string;
+    }>;
+  };
+  clinicalStatus: {
+    coding: Array<{
+      code: string;
+    }>;
+  };
+}
+
 export function calculateESILevel(
   chiefComplaint: string,
-  vitals: any,
-  fhirPatient: any
+  vitalSigns?: {
+    heartRate: number;
+    bloodPressure: string;
+    respiratoryRate: number;
+    temperature: number;
+    oxygenSaturation: number;
+  },
+  conditions?: Condition[]
 ): number {
   // Start with default level (3)
   let esiLevel = 3;
@@ -79,9 +99,9 @@ export function calculateESILevel(
   }
 
   // Check medical history for high-risk conditions
-  if (fhirPatient?.conditions) {
-    const hasHighRiskCondition = fhirPatient.conditions.some((condition: any) => {
-      const conditionText = condition.code?.text?.toLowerCase() || "";
+  if (conditions) {
+    const hasHighRiskCondition = conditions.some((condition: Condition) => {
+      const conditionText = condition.code.coding[0]?.display?.toLowerCase() || "";
       return HIGH_RISK_CONDITIONS.some(risk => conditionText.includes(risk));
     });
 
@@ -92,9 +112,9 @@ export function calculateESILevel(
   }
 
   // Check vitals if available
-  if (vitals) {
+  if (vitalSigns) {
     // Check for abnormal vital signs
-    const abnormalVitals = checkAbnormalVitals(vitals);
+    const abnormalVitals = checkAbnormalVitals(vitalSigns);
     if (abnormalVitals) {
       // If abnormal vitals, increase severity by 1 level
       esiLevel = Math.max(1, esiLevel - 1);
